@@ -4,15 +4,11 @@ Este es el servicio de usuarios de GrowLink. La carpeta todavia se llama
 growlink-app pero de aqui en adelante lo llamamos user-service, para que
 combine con trivia-service y cursos-service.
 
-## Por que microservicios y no un solo proyecto
+## Por qué microservicios y no un solo proyecto
 
 Al principio pensamos en hacer todo junto, pero el equipo decidio separarlo
 en varios servicios. Las razones:
 
-- Gente que ya vio este curso nos recomendo no hacerlo todo junto.
-- Mas adelante en el curso piden ver disponibilidad y balanceo de carga, y
-  eso se prueba mejor cuando cada parte del sistema puede correr y caerse
-  por su cuenta sin tumbar todo lo demas.
 - Cada servicio tiene su propia base de datos y no se meten entre si, asi
   cada quien del equipo puede trabajar en el suyo sin pisarse.
 
@@ -22,7 +18,7 @@ Quedaron 3 servicios:
 - **cursos-service** - cursos, prerequisitos, roadmap generado con IA
 - **trivia-service** - salas de trivia en tiempo real, la parte de concurrencia
 
-## Como correrlo
+## Cómo correrlo
 
 ```bash
 docker compose up -d   # levanta Postgres en localhost:5432
@@ -50,8 +46,8 @@ pasar por admin.
 
 ## Sobre HU-02 (los permisos por rol)
 
-La parte que le toca a user-service ya esta hecha: /api/home/estado le
-dice al que pregunta que secciones puede ver, segun su rol, y eso lo
+La parte que le toca a user-service: /api/home/estado le
+dice al que pregunta qué secciones puede ver, segun su rol, y eso lo
 decide el backend, no el frontend. Cada rol ve un conjunto distinto:
 
 - USUARIO ve TRIVIA y PERFIL
@@ -69,6 +65,3 @@ donde se termina de construir y probar el resto de la historia.
 mvn test
 ```
 
-Prueba HU-01, HU-04, HU-05 y la parte de HU-02 que le toca a este
-servicio, de punta a punta contra una base de datos real (H2 en las
-pruebas), no hay nada mockeado.
