@@ -1,0 +1,10 @@
+package com.growlink.adapter.web.dto;
+
+import com.growlink.domain.Rol;
+import com.growlink.domain.Usuario;
+
+public record UsuarioResponse(Long id, String nombre, Rol rol) {
+    public static UsuarioResponse from(Usuario u) {
+        return new UsuarioResponse(u.getId(), u.getNombre(), u.getRol());
+    }
+}

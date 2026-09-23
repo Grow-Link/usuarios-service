@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:growlink;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+
+growlink:
+  jwt:
+    secret: test_secret_only_used_in_the_test_profile_32bytes+
+    expiration-minutes: 60

@@ -1,0 +1,32 @@
+package com.growlink.adapter.web;
+
+import com.growlink.adapter.web.dto.LoginRequest;
+import com.growlink.adapter.web.dto.LoginResponse;
+import com.growlink.adapter.web.dto.UsuarioResponse;
+import com.growlink.application.AuthService;
+import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/auth")
+public class AuthController {
+
+    private final AuthService authService;
+
+    public AuthController(AuthService authService) {
+        this.authService = authService;
+    }
+
+    /** HU-01: la pantalla de seleccion de usuario pinta esta lista, no hay registro real. */
+    @GetMapping("/usuarios")
+    public List<UsuarioResponse> usuariosDisponibles() {
+        return authService.listarUsuariosDisponibles().stream().map(UsuarioResponse::from).toList();
+    }
+
+    @PostMapping("/login")
+    public LoginResponse login(@Valid @RequestBody LoginRequest request) {
+        return LoginResponse.from(authService.login(request.usuarioId()));
+    }
+}
