@@ -13,10 +13,7 @@ import java.util.Map;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-/**
- * Cubre HU-01 (usuario quemado), HU-04 (checkpoints de perfil) y HU-05
- * (home condicional) de punta a punta, contra H2 real - no mocks.
- */
+// esta prueba cubre HU-01, HU-04 y HU-05 completas, contra una base real
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -40,7 +37,7 @@ class UsuarioQuemadoPerfilHomeTest {
 
     @Test
     void meSinTokenEsRechazadoConCodigoDeAutenticacion() throws Exception {
-        // 401, no 403 - ver la nota en SecurityConfig, ya nos paso este bug antes.
+        // tiene que dar 401, no 403, ya nos paso este bug antes
         mockMvc.perform(get("/api/perfil/me"))
                 .andExpect(status().isUnauthorized());
 
@@ -53,7 +50,7 @@ class UsuarioQuemadoPerfilHomeTest {
         String token = loginComo(1L); // Ana, rol USUARIO (primer usuario del seed)
         String auth = "Bearer " + token;
 
-        // Estado inicial: sin perfil completo -> Home debe pedir el camino de checkpoints.
+        // al principio no hay perfil, entonces el home pide el camino de checkpoints
         mockMvc.perform(get("/api/home/estado").header("Authorization", auth))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.estado").value("SIN_PERFIL"));
@@ -62,31 +59,55 @@ class UsuarioQuemadoPerfilHomeTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.completo").value(false));
 
-        // Checkpoint 1 de 3.
+        // checkpoint 1 de 3
         mockMvc.perform(put("/api/perfil/metas").header("Authorization", auth)
                         .contentType("application/json")
                         .content("{\"metas\": \"Quiero ser backend developer en 6 meses\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.completo").value(false));
 
-        // Checkpoint 2 de 3.
+        // checkpoint 2 de 3
         mockMvc.perform(put("/api/perfil/intereses").header("Authorization", auth)
                         .contentType("application/json")
                         .content("{\"intereses\": [\"BACKEND\", \"BASES_DE_DATOS\"]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.completo").value(false));
 
-        // Checkpoint 3 de 3 - aqui SI se cierra el camino.
+        // checkpoint 3 de 3, aqui si se cierra el camino
         mockMvc.perform(put("/api/perfil/nivel").header("Authorization", auth)
                         .contentType("application/json")
                         .content("{\"nivel\": \"PRINCIPIANTE\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.completo").value(true));
 
-        // Home ya debe reflejar el perfil completo, en una peticion HTTP totalmente aparte.
+        // pedimos el home en una peticion aparte, para confirmar que si quedo guardado
         mockMvc.perform(get("/api/home/estado").header("Authorization", auth))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.estado").value("CON_PERFIL_SIN_ROADMAP"));
+    }
+
+    @Test
+    void cadaRolVeSusPropiasSecciones() throws Exception {
+        // Ana es USUARIO, solo deberia ver trivia y perfil
+        String tokenAna = loginComo(1L);
+        mockMvc.perform(get("/api/home/estado").header("Authorization", "Bearer " + tokenAna))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.secciones.length()").value(2))
+                .andExpect(jsonPath("$.secciones", org.hamcrest.Matchers.containsInAnyOrder("TRIVIA", "PERFIL")));
+
+        // Beto es PUBLICADOR, ademas ve cursos y preguntas de trivia
+        String tokenBeto = loginComo(2L);
+        mockMvc.perform(get("/api/home/estado").header("Authorization", "Bearer " + tokenBeto))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.secciones.length()").value(4))
+                .andExpect(jsonPath("$.secciones", org.hamcrest.Matchers.hasItems("CURSOS", "PREGUNTAS_TRIVIA")));
+
+        // Carla es ADMIN, ve todo incluyendo dar de baja cursos y el dashboard
+        String tokenCarla = loginComo(3L);
+        mockMvc.perform(get("/api/home/estado").header("Authorization", "Bearer " + tokenCarla))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.secciones.length()").value(6))
+                .andExpect(jsonPath("$.secciones", org.hamcrest.Matchers.hasItems("DAR_DE_BAJA_CURSOS", "DASHBOARD_METRICAS")));
     }
 
     private String loginComo(Long usuarioId) throws Exception {

@@ -5,6 +5,8 @@ com\growlink\adapter\security\TokenAuthenticationFilter.class
 com\growlink\adapter\web\dto\LoginRequest.class
 com\growlink\config\SecurityConfig.class
 com\growlink\adapter\security\TokenService.class
+com\growlink\application\HomeService$1.class
+com\growlink\domain\Seccion.class
 com\growlink\adapter\web\dto\LoginResponse.class
 com\growlink\domain\Rol.class
 com\growlink\adapter\web\dto\PerfilResponse.class
@@ -13,6 +15,7 @@ com\growlink\adapter\web\dto\InteresesRequest.class
 com\growlink\adapter\web\dto\UsuarioResponse.class
 com\growlink\domain\Interes.class
 com\growlink\domain\EstadoHome.class
+com\growlink\application\HomeService$ResumenHome.class
 com\growlink\domain\Perfil.class
 com\growlink\adapter\web\GlobalExceptionHandler.class
 com\growlink\domain\Usuario.class

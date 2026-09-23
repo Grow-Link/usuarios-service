@@ -19,7 +19,7 @@ public class AuthController {
         this.authService = authService;
     }
 
-    /** HU-01: la pantalla de seleccion de usuario pinta esta lista, no hay registro real. */
+    // con esta lista se pinta la pantalla de elegir usuario, no hay registro real
     @GetMapping("/usuarios")
     public List<UsuarioResponse> usuariosDisponibles() {
         return authService.listarUsuariosDisponibles().stream().map(UsuarioResponse::from).toList();

@@ -20,6 +20,6 @@ public class HomeController {
     @GetMapping("/estado")
     public HomeEstadoResponse estado(Authentication authentication) {
         Long usuarioId = Long.valueOf(authentication.getName());
-        return new HomeEstadoResponse(homeService.obtenerEstado(usuarioId));
+        return HomeEstadoResponse.from(homeService.obtenerResumen(usuarioId));
     }
 }

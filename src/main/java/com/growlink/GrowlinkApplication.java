@@ -4,8 +4,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration;
 
-// UserDetailsServiceAutoConfiguration excluida: la autenticacion es 100% por
-// token propio (ver TokenService), no hay password real que validar (HU-01).
+// quitamos esto porque no manejamos password real, todo el login es por token
 @SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)
 public class GrowlinkApplication {
 

@@ -18,7 +18,7 @@ public class PerfilService {
         this.perfilRepository = perfilRepository;
     }
 
-    /** Cada usuario tiene un perfil implicito desde su primer login, aunque este vacio. */
+    // todo usuario tiene un perfil desde su primer login, aunque este vacio
     @Transactional
     public Perfil obtener(Long usuarioId) {
         return perfilRepository.findByUsuarioId(usuarioId)

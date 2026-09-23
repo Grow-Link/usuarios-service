@@ -22,8 +22,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .anyRequest().authenticated())
-                // Sin esto, "sin token" responde 403 en vez de 401 - ver la misma nota
-                // en identity-service, fue un bug real que ya encontramos una vez.
+                // sin esto, pedir algo sin token da 403 en vez de 401
+                // ya nos paso una vez asi que lo dejamos explicito
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(
                         (request, response, authException) -> response.sendError(HttpServletResponse.SC_UNAUTHORIZED)))
                 .addFilterBefore(tokenFilter, UsernamePasswordAuthenticationFilter.class);

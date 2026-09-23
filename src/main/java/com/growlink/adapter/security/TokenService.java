@@ -14,11 +14,8 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.Optional;
 
-/**
- * HU-01 es "login" sin contraseña, pero HU-02 exige que el backend valide el
- * rol de verdad, no solo esconder botones en el frontend - por eso el token
- * va firmado igual que un JWT real: nadie puede editar su propio rol a mano.
- */
+// aunque no hay password, el token va firmado como un JWT normal
+// asi nadie puede editar su propio rol a mano y hacerse pasar por admin
 @Service
 public class TokenService {
 
@@ -45,6 +42,8 @@ public class TokenService {
     public record Sesion(Long usuarioId, Rol rol) {
     }
 
+    // si el token es invalido, esta manipulado o ya expiro, devuelve vacio
+    // nunca lanza una excepcion hacia el filtro
     public Optional<Sesion> validar(String token) {
         try {
             Claims claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();

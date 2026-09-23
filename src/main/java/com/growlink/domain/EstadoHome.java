@@ -1,6 +1,6 @@
 package com.growlink.domain;
 
-/** Las 3 variantes de HU-05. CON_ROADMAP no es alcanzable todavia (HU-11 aun no existe). */
+// las 3 variantes del home, CON_ROADMAP todavia no se puede dar
 public enum EstadoHome {
     SIN_PERFIL,
     CON_PERFIL_SIN_ROADMAP,

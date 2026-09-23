@@ -6,7 +6,7 @@ import com.growlink.domain.Usuario;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
-/** HU-01 DoD: "usuarios seed cargados como fixture". Uno por rol, nada más. */
+// crea un usuario fijo por cada rol, para poder probar sin registro real
 @Component
 public class DataSeeder implements CommandLineRunner {
 

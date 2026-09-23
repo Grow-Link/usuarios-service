@@ -9,7 +9,7 @@ import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-/** HU-04: un endpoint por checkpoint, para que cada paso del camino se guarde independiente. */
+// HU-04, un endpoint por checkpoint, cada paso se guarda aparte
 @RestController
 @RequestMapping("/api/perfil")
 public class PerfilController {

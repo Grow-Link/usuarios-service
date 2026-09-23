@@ -5,11 +5,8 @@ import jakarta.persistence.*;
 import java.util.HashSet;
 import java.util.Set;
 
-/**
- * Los 3 checkpoints de HU-04. estaCompleto() es la unica fuente de verdad de
- * "cuando se cierra el camino" - ni el frontend ni otro endpoint deberian
- * reimplementar esa regla por su cuenta.
- */
+// los 3 checkpoints de HU-04 viven aqui
+// estaCompleto() es la unica regla que dice si el camino ya se cerro
 @Entity
 @Table(name = "perfil")
 public class Perfil {

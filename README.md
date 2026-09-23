@@ -1,52 +1,67 @@
-# growlink-app
+# user-service
 
-Monolito de GrowLink MVP v2. Reemplaza a los 4 microservicios anteriores
-(`identity-service`, `roadmap-service`, `opportunities-service`,
-`realtime-service`) — el alcance nuevo (acordado con el profesor: foco en
-**concurrencia y tiempo real**, usuarios quemados, dominio de Tecnología)
-ya no tiene fronteras de dominio que justifiquen separarlos.
+Este es el servicio de usuarios de GrowLink. La carpeta todavia se llama
+growlink-app pero de aqui en adelante lo llamamos user-service, para que
+combine con trivia-service y cursos-service.
 
-Organizado en capas tipo hexagonal, sin la ceremonia completa de puertos:
+## Por que microservicios y no un solo proyecto
 
-```
-domain/        entidades y reglas puras (Usuario, Perfil, enums)
-application/   casos de uso (AuthService, PerfilService, HomeService)
-adapter/
-  web/         controladores REST
-  persistence/ repositorios Spring Data JPA
-  security/    token propio (sin password) + filtro de autenticación
-config/        seguridad, seed de datos
-```
+Al principio pensamos en hacer todo junto, pero el equipo decidio separarlo
+en varios servicios. Las razones:
 
-## Cómo correrlo
+- Gente que ya vio este curso nos recomendo no hacerlo todo junto.
+- Mas adelante en el curso piden ver disponibilidad y balanceo de carga, y
+  eso se prueba mejor cuando cada parte del sistema puede correr y caerse
+  por su cuenta sin tumbar todo lo demas.
+- Cada servicio tiene su propia base de datos y no se meten entre si, asi
+  cada quien del equipo puede trabajar en el suyo sin pisarse.
+
+Quedaron 3 servicios:
+
+- **user-service** (este) - usuarios, perfil, y el estado del home
+- **cursos-service** - cursos, prerequisitos, roadmap generado con IA
+- **trivia-service** - salas de trivia en tiempo real, la parte de concurrencia
+
+## Como correrlo
 
 ```bash
-docker compose up -d   # Postgres en localhost:5432
+docker compose up -d   # levanta Postgres en localhost:5432
 mvn spring-boot:run    # arranca en localhost:8080
 ```
 
-Al arrancar, `DataSeeder` crea 3 usuarios fixture (uno por rol) si la tabla
-está vacía — no hay registro real, es la base de HU-01.
+Al arrancar se crean 3 usuarios de prueba, uno por rol, para poder entrar
+sin necesidad de registrarse.
 
-## Cubierto hoy: HU-01, HU-04, HU-05
+## Lo que ya tiene
 
-| Método | Ruta | Auth | Qué hace |
+| Metodo | Ruta | Necesita token | Que hace |
 |---|---|---|---|
-| `GET` | `/api/auth/usuarios` | No | Lista los usuarios quemados (pantalla de selección). |
-| `POST` | `/api/auth/login` | No | `{"usuarioId": 1}` → token firmado con el rol adentro. |
-| `GET` | `/api/perfil/me` | Sí | Perfil actual + si ya está completo. |
-| `PUT` | `/api/perfil/metas` | Sí | Checkpoint 1. |
-| `PUT` | `/api/perfil/intereses` | Sí | Checkpoint 2 — mismo enum que usarán las categorías de curso. |
-| `PUT` | `/api/perfil/nivel` | Sí | Checkpoint 3 — al llenarse, `completo` pasa a `true`. |
-| `GET` | `/api/home/estado` | Sí | `SIN_PERFIL` \| `CON_PERFIL_SIN_ROADMAP` (`CON_ROADMAP` todavía no es alcanzable — falta HU-11). |
+| GET | /api/auth/usuarios | No | Lista los usuarios de prueba para elegir uno |
+| POST | /api/auth/login | No | Recibe el usuarioId y devuelve un token |
+| GET | /api/perfil/me | Si | Devuelve el perfil actual y si ya esta completo |
+| PUT | /api/perfil/metas | Si | Guarda el checkpoint de metas |
+| PUT | /api/perfil/intereses | Si | Guarda el checkpoint de intereses |
+| PUT | /api/perfil/nivel | Si | Guarda el checkpoint de nivel, aqui se completa el perfil |
+| GET | /api/home/estado | Si | Dice si falta perfil, si falta roadmap o si ya hay roadmap, y ademas que secciones puede ver el usuario segun su rol |
 
-Todo lo que requiere auth va con `Authorization: Bearer <token>`.
+El token va firmado aunque no haya password, porque el rol que trae adentro
+tiene que ser de fiar. Si alguien pudiera editarlo a mano, se podria hacer
+pasar por admin.
 
-**Por qué el token va firmado si "no hay login real":** HU-02 exige que el
-backend valide el rol de verdad, no solo esconder botones en el frontend.
-Un token sin firmar se podría editar a mano para volverse admin. El token
-lleva el rol firmado con la misma librería (`jjwt`) que ya usamos en
-`identity-service` — cero curva de aprendizaje nueva, cero contraseña.
+## Sobre HU-02 (los permisos por rol)
+
+La parte que le toca a user-service ya esta hecha: /api/home/estado le
+dice al que pregunta que secciones puede ver, segun su rol, y eso lo
+decide el backend, no el frontend. Cada rol ve un conjunto distinto:
+
+- USUARIO ve TRIVIA y PERFIL
+- PUBLICADOR ve ademas CURSOS y PREGUNTAS_TRIVIA
+- ADMIN ve todo lo anterior mas DAR_DE_BAJA_CURSOS y DASHBOARD_METRICAS
+
+Lo que falta de HU-02 es bloquear de verdad los endpoints que hacen esas
+cosas (publicar un curso, ver el dashboard), y esos endpoints no existen
+en user-service. Van a vivir en cursos-service y trivia-service, y ahi es
+donde se termina de construir y probar el resto de la historia.
 
 ## Pruebas
 
@@ -54,16 +69,6 @@ lleva el rol firmado con la misma librería (`jjwt`) que ya usamos en
 mvn test
 ```
 
-`UsuarioQuemadoPerfilHomeTest` cubre las 3 historias de punta a punta contra
-H2 real: sin token da 401 (no 403 — ya nos pasó ese bug una vez en
-`identity-service`, esta vez lo prevenimos desde el diseño), el camino de
-perfil solo se marca completo con los 3 checkpoints llenos, y el estado del
-Home cambia en una petición HTTP completamente aparte de la que completó el
-perfil (para probar que el estado persiste de verdad, no solo en la
-respuesta del PUT).
-
-## Qué sigue (no incluido hoy, a propósito)
-
-- HU-02 (guards de autorización por rol en endpoints protegidos — el token
-  ya lleva el rol, falta el `@PreAuthorize`/filtro que lo use)
-- HU-06 en adelante: cursos, roadmap con IA, trivia en tiempo real
+Prueba HU-01, HU-04, HU-05 y la parte de HU-02 que le toca a este
+servicio, de punta a punta contra una base de datos real (H2 en las
+pruebas), no hay nada mockeado.

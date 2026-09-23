@@ -17,7 +17,7 @@ spring:
 
 growlink:
   jwt:
-    # SOLO desarrollo local. En cualquier ambiente compartido, sobreescribir con GROWLINK_JWT_SECRET.
+    # esto es solo para desarrollo local, en cualquier otro ambiente hay que poner GROWLINK_JWT_SECRET
     secret: ${GROWLINK_JWT_SECRET:CHANGE_ME_local_dev_only_not_a_real_secret_32bytes+}
     expiration-minutes: ${GROWLINK_JWT_EXPIRATION_MINUTES:1440}
   ai:
