@@ -69,7 +69,7 @@ class UsuarioQuemadoPerfilHomeTest {
         // checkpoint 2 de 3
         mockMvc.perform(put("/api/perfil/intereses").header("Authorization", auth)
                         .contentType("application/json")
-                        .content("{\"intereses\": [\"BACKEND\", \"BASES_DE_DATOS\"]}"))
+                        .content("{\"intereses\": [\"INGENIERIA_SISTEMAS\", \"MATEMATICAS\"]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.completo").value(false));
 
