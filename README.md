@@ -21,12 +21,15 @@ Quedaron 3 servicios:
 ## Cómo correrlo
 
 ```bash
-docker compose up -d   # levanta Postgres en localhost:5432
+docker compose up -d   # levanta Postgres en localhost:5433
 mvn spring-boot:run    # arranca en localhost:8080
 ```
 
-Al arrancar se crean 3 usuarios de prueba, uno por rol, para poder entrar
-sin necesidad de registrarse.
+Al arrancar se siembran 13 usuarios de prueba (6 USUARIO, 6 PUBLICADOR, 1 ADMIN),
+cada uno con nombre y cargo, para poder entrar sin necesidad de registrarse.
+
+Con la app corriendo, `http://localhost:8080/swagger-ui.html` tiene todos los
+endpoints documentados y un boton "Authorize" para pegar el token una sola vez.
 
 ## Lo que ya tiene
 
@@ -43,6 +46,13 @@ sin necesidad de registrarse.
 El token va firmado aunque no haya password, porque el rol que trae adentro
 tiene que ser de fiar. Si alguien pudiera editarlo a mano, se podria hacer
 pasar por admin.
+
+### Como sabe /api/home/estado si ya hay roadmap
+
+Le pregunta a cursos-service (`GET /api/roadmap/mio?usuarioId=`), reenviando el
+mismo token. La URL se configura con `GROWLINK_CURSOS_SERVICE_URL` (por defecto
+`http://localhost:8086`). Si cursos-service no responde o no tiene roadmap
+todavia, el estado cae a `CON_PERFIL_SIN_ROADMAP` sin romper el home.
 
 ## Sobre HU-02 (los permisos por rol)
 

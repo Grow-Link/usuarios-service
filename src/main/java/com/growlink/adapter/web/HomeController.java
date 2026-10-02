@@ -3,8 +3,10 @@ package com.growlink.adapter.web;
 import com.growlink.adapter.web.dto.HomeEstadoResponse;
 import com.growlink.application.HomeService;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -20,8 +22,9 @@ public class HomeController {
     }
 
     @GetMapping("/estado")
-    public HomeEstadoResponse estado(Authentication authentication) {
+    public HomeEstadoResponse estado(Authentication authentication,
+                                      @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
         Long usuarioId = Long.valueOf(authentication.getName());
-        return HomeEstadoResponse.from(homeService.obtenerResumen(usuarioId));
+        return HomeEstadoResponse.from(homeService.obtenerResumen(usuarioId, authorization));
     }
 }

@@ -22,6 +22,8 @@ growlink:
     expiration-minutes: ${GROWLINK_JWT_EXPIRATION_MINUTES:1440}
   ai:
     model: ${GROWLINK_AI_MODEL:claude-opus-5}
+  cursos-service:
+    base-url: ${GROWLINK_CURSOS_SERVICE_URL:http://localhost:8086}
 
 logging:
   level:

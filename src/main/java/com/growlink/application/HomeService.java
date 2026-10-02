@@ -1,5 +1,6 @@
 package com.growlink.application;
 
+import com.growlink.adapter.cursos.CursosServiceClient;
 import com.growlink.adapter.persistence.UsuarioRepository;
 import com.growlink.domain.EstadoHome;
 import com.growlink.domain.Rol;
@@ -10,27 +11,36 @@ import org.springframework.stereotype.Service;
 import java.util.EnumSet;
 import java.util.Set;
 
-// HU-05. CON_ROADMAP todavia no se puede dar porque no existe el roadmap
-// eso llega cuando construyamos cursos-service
+// HU-05
 @Service
 public class HomeService {
 
     private final PerfilService perfilService;
     private final UsuarioRepository usuarioRepository;
+    private final CursosServiceClient cursosServiceClient;
 
-    public HomeService(PerfilService perfilService, UsuarioRepository usuarioRepository) {
+    public HomeService(PerfilService perfilService, UsuarioRepository usuarioRepository,
+                        CursosServiceClient cursosServiceClient) {
         this.perfilService = perfilService;
         this.usuarioRepository = usuarioRepository;
+        this.cursosServiceClient = cursosServiceClient;
     }
 
     public record ResumenHome(EstadoHome estado, Set<Seccion> secciones) {
     }
 
-    public ResumenHome obtenerResumen(Long usuarioId) {
+    public ResumenHome obtenerResumen(Long usuarioId, String bearerToken) {
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(() -> new UsuarioNoEncontradoException(usuarioId));
         boolean perfilCompleto = perfilService.obtener(usuarioId).estaCompleto();
-        EstadoHome estado = perfilCompleto ? EstadoHome.CON_PERFIL_SIN_ROADMAP : EstadoHome.SIN_PERFIL;
+        EstadoHome estado;
+        if (!perfilCompleto) {
+            estado = EstadoHome.SIN_PERFIL;
+        } else if (cursosServiceClient.tieneRoadmap(usuarioId, bearerToken)) {
+            estado = EstadoHome.CON_ROADMAP;
+        } else {
+            estado = EstadoHome.CON_PERFIL_SIN_ROADMAP;
+        }
         return new ResumenHome(estado, seccionesPara(usuario.getRol()));
     }
 
