@@ -4,6 +4,7 @@ import com.growlink.adapter.web.dto.LoginRequest;
 import com.growlink.adapter.web.dto.LoginResponse;
 import com.growlink.adapter.web.dto.UsuarioResponse;
 import com.growlink.application.AuthService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
@@ -11,6 +12,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/auth")
+@Tag(name = "Autenticación", description = "Login quemado y listado de usuarios disponibles")
 public class AuthController {
 
     private final AuthService authService;

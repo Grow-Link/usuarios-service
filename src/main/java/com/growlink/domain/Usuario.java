@@ -17,13 +17,17 @@ public class Usuario {
     @Column(nullable = false)
     private Rol rol;
 
+    @Column(nullable = true)
+    private String cargo;
+
     protected Usuario() {
         // JPA
     }
 
-    public Usuario(String nombre, Rol rol) {
+    public Usuario(String nombre, Rol rol, String cargo) {
         this.nombre = nombre;
         this.rol = rol;
+        this.cargo = cargo;
     }
 
     public Long getId() {
@@ -36,5 +40,9 @@ public class Usuario {
 
     public Rol getRol() {
         return rol;
+    }
+
+    public String getCargo() {
+        return cargo;
     }
 }

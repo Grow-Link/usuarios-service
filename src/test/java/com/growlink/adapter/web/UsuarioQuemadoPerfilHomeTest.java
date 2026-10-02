@@ -26,11 +26,13 @@ class UsuarioQuemadoPerfilHomeTest {
     private ObjectMapper objectMapper;
 
     @Test
-    void listaLosTresUsuariosFixtureConSusRoles() throws Exception {
+    void listaLosUsuariosFixtureConSusRolesYCargo() throws Exception {
+        // 6 USUARIO + 6 PUBLICADOR + 1 ADMIN, con Ana, Beto y Carla primero (ids 1, 2 y 3)
         mockMvc.perform(get("/api/auth/usuarios"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$.length()").value(13))
                 .andExpect(jsonPath("$[0].rol").value("USUARIO"))
+                .andExpect(jsonPath("$[0].cargo").value("Analista Junior · Grupo Financiero Norte"))
                 .andExpect(jsonPath("$[1].rol").value("PUBLICADOR"))
                 .andExpect(jsonPath("$[2].rol").value("ADMIN"));
     }
