@@ -25,6 +25,13 @@ public class PerfilService {
                 .orElseGet(() -> perfilRepository.save(new Perfil(usuarioId)));
     }
 
+    // HU-22: la llama trivia-service cuando alguien gana una partida
+    @Transactional
+    public void sumarTriviaGanada(Long usuarioId) {
+        obtener(usuarioId); // por si todavia no tenia perfil
+        perfilRepository.sumarTriviaGanada(usuarioId);
+    }
+
     @Transactional
     public Perfil actualizarMetas(Long usuarioId, String metas) {
         Perfil perfil = obtener(usuarioId);

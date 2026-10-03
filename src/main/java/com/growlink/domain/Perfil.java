@@ -30,6 +30,11 @@ public class Perfil {
     @Enumerated(EnumType.STRING)
     private Nivel nivel;
 
+    // HU-22: sube de a uno con un UPDATE atomico (ver PerfilRepository), nunca desde aqui
+    // es Integer con default en la tabla para que no se rompan los perfiles que ya existian
+    @Column(columnDefinition = "integer default 0")
+    private Integer triviasGanadas = 0;
+
     protected Perfil() {
         // JPA
     }
@@ -72,5 +77,9 @@ public class Perfil {
 
     public Nivel getNivel() {
         return nivel;
+    }
+
+    public int getTriviasGanadas() {
+        return triviasGanadas == null ? 0 : triviasGanadas;
     }
 }

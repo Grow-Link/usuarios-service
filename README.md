@@ -69,6 +69,35 @@ cosas (publicar un curso, ver el dashboard), y esos endpoints no existen
 en user-service. Van a vivir en cursos-service y trivia-service, y ahi es
 donde se termina de construir y probar el resto de la historia.
 
+## Trivias ganadas (HU-22)
+
+El perfil tiene un contador `triviasGanadas` (sale en `GET /api/perfil/me`).
+Lo suma trivia-service cuando alguien gana una partida, llamando a
+`POST /api/interno/trivias-ganadas/{usuarioId}`.
+
+- Ese endpoint no es para el frontend. No usa el token de un usuario, se
+  protege con la llave interna `GROWLINK_INTERNAL_KEY` en el header
+  `X-Internal-Key` (sin llave o con llave mala responde 403).
+- La suma la hace la base de datos en un solo UPDATE, no leyendo y escribiendo
+  desde Java, asi que si un usuario gana dos partidas a la vez no se pierde
+  ninguna (hay una prueba con 10 hilos que lo comprueba).
+
+## Despliegue
+
+Se despliega en Azure App Service, el flujo de ramas y ambientes esta
+explicado en el README del repo `infra`. `ci.yml` corre las pruebas en cada
+push a `main`, `avance` o `final`, y `cd.yml` despliega la rama a su ambiente
+de GitHub (`main` -> `actual`, `avance` -> `avance`, `final` -> `final`).
+Tambien hay un `Dockerfile`.
+
+| Variable | Para que sirve |
+|---|---|
+| `PORT` | Puerto, Azure lo pone solo |
+| `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | La base Postgres |
+| `GROWLINK_JWT_SECRET` | El secreto con el que se firman los tokens, tiene que ser el mismo en los tres servicios |
+| `GROWLINK_INTERNAL_KEY` | Llave para las llamadas entre servicios, la misma en trivia-service |
+| `GROWLINK_CURSOS_SERVICE_URL` | URL de cursos-service |
+
 ## Pruebas
 
 ```bash

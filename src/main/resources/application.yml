@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: ${PORT:8080}
 
 spring:
   application:
@@ -20,6 +20,8 @@ growlink:
     # esto es solo para desarrollo local, en cualquier otro ambiente hay que poner GROWLINK_JWT_SECRET
     secret: ${GROWLINK_JWT_SECRET:CHANGE_ME_local_dev_only_not_a_real_secret_32bytes+}
     expiration-minutes: ${GROWLINK_JWT_EXPIRATION_MINUTES:1440}
+  # llave para las llamadas de servicio a servicio (trivia -> usuarios), debe ser la misma en trivia-service
+  internal-key: ${GROWLINK_INTERNAL_KEY:CHANGE_ME_local_dev_only_internal_key}
   ai:
     model: ${GROWLINK_AI_MODEL:claude-opus-5}
   cursos-service:
