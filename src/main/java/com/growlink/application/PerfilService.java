@@ -4,6 +4,7 @@ import com.growlink.adapter.persistence.PerfilRepository;
 import com.growlink.domain.Interes;
 import com.growlink.domain.Nivel;
 import com.growlink.domain.Perfil;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,16 +14,26 @@ import java.util.Set;
 public class PerfilService {
 
     private final PerfilRepository perfilRepository;
+    private final PerfilCreador perfilCreador;
 
-    public PerfilService(PerfilRepository perfilRepository) {
+    public PerfilService(PerfilRepository perfilRepository, PerfilCreador perfilCreador) {
         this.perfilRepository = perfilRepository;
+        this.perfilCreador = perfilCreador;
     }
 
-    // todo usuario tiene un perfil desde su primer login, aunque este vacio
+    // todo usuario tiene un perfil desde su primer login, aunque este vacio.
+    // Si dos peticiones piden el perfil por primera vez al mismo tiempo, las dos intentan crearlo y una choca con
+    // la restriccion unica: ese choque NO es un error, solo significa que la otra ya lo creo, asi que se vuelve a leer.
     @Transactional
     public Perfil obtener(Long usuarioId) {
-        return perfilRepository.findByUsuarioId(usuarioId)
-                .orElseGet(() -> perfilRepository.save(new Perfil(usuarioId)));
+        return perfilRepository.findByUsuarioId(usuarioId).orElseGet(() -> {
+            try {
+                perfilCreador.crear(usuarioId);
+            } catch (DataIntegrityViolationException e) {
+                // otra peticion se adelanto: el perfil ya existe
+            }
+            return perfilRepository.findByUsuarioId(usuarioId).orElseThrow();
+        });
     }
 
     // HU-22: la llama trivia-service cuando alguien gana una partida

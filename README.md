@@ -69,6 +69,12 @@ cosas (publicar un curso, ver el dashboard), y esos endpoints no existen
 en user-service. Van a vivir en cursos-service y trivia-service, y ahi es
 donde se termina de construir y probar el resto de la historia.
 
+## Buscar personas y usuario de demostracion
+
+`GET /api/usuarios/buscar?q=` (con token) busca por nombre o cargo (minimo 2 letras, maximo 10 resultados, nunca devuelve a quien busca). Lo usa la trivia para retar a alguien.
+
+El perfil de Esteban (id 5) se completa solo al arrancar, con la misma meta del roadmap de demostracion que siembra cursos-service. Pedir el perfil por primera vez desde varios lugares a la vez no falla: la creacion tolera la carrera (`PerfilCreador`).
+
 ## Trivias ganadas (HU-22)
 
 El perfil tiene un contador `triviasGanadas` (sale en `GET /api/perfil/me`).
