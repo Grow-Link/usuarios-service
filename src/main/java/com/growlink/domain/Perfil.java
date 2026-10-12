@@ -40,6 +40,11 @@ public class Perfil {
     @Column(columnDefinition = "integer default 0")
     private Integer triviasGanadas = 0;
 
+    // jardin: sube con cada trivia ganada (misma operacion atomica que triviasGanadas) y baja al regar una
+    // planta (ver PerfilRepository); Integer con default por la misma razon que triviasGanadas
+    @Column(columnDefinition = "integer default 0")
+    private Integer gotas = 0;
+
     protected Perfil() {
         // JPA
     }
@@ -99,5 +104,14 @@ public class Perfil {
 
     public int getTriviasGanadas() {
         return triviasGanadas == null ? 0 : triviasGanadas;
+    }
+
+    public int getGotas() {
+        return gotas == null ? 0 : gotas;
+    }
+
+    // solo para el DataSeeder: deja al usuario de demostracion con gotas sin jugar nada
+    public void sumarGotas(int cantidad) {
+        this.gotas = getGotas() + cantidad;
     }
 }

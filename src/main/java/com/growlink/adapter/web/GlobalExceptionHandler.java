@@ -1,5 +1,7 @@
 package com.growlink.adapter.web;
 
+import com.growlink.application.JardinConflictoException;
+import com.growlink.application.JardinNoEncontradoException;
 import com.growlink.application.UsuarioNoEncontradoException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +20,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(UsuarioNoEncontradoException.class)
     public ResponseEntity<ErrorBody> handleNotFound(UsuarioNoEncontradoException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorBody(e.getMessage()));
+    }
+
+    @ExceptionHandler(JardinNoEncontradoException.class)
+    public ResponseEntity<ErrorBody> handleJardinNoEncontrado(JardinNoEncontradoException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorBody(e.getMessage()));
+    }
+
+    @ExceptionHandler(JardinConflictoException.class)
+    public ResponseEntity<ErrorBody> handleJardinConflicto(JardinConflictoException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorBody(e.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
