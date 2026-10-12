@@ -4,6 +4,7 @@ import com.growlink.adapter.web.dto.InteresesRequest;
 import com.growlink.adapter.web.dto.MetasRequest;
 import com.growlink.adapter.web.dto.NivelRequest;
 import com.growlink.adapter.web.dto.PerfilResponse;
+import com.growlink.adapter.web.dto.TiempoRequest;
 import com.growlink.application.PerfilService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -40,6 +41,13 @@ public class PerfilController {
     @PutMapping("/nivel")
     public PerfilResponse actualizarNivel(Authentication authentication, @Valid @RequestBody NivelRequest request) {
         return PerfilResponse.from(perfilService.actualizarNivel(usuarioId(authentication), request.nivel()));
+    }
+
+    // opcional: cuanto tiempo puede dedicarle (horas por semana y semanas); sin valores, no hay limite
+    @PutMapping("/tiempo")
+    public PerfilResponse actualizarTiempo(Authentication authentication, @Valid @RequestBody TiempoRequest request) {
+        return PerfilResponse.from(perfilService.actualizarTiempo(usuarioId(authentication), request.horasPorSemana(),
+                request.semanas()));
     }
 
     private Long usuarioId(Authentication authentication) {

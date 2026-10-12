@@ -30,6 +30,11 @@ public class Perfil {
     @Enumerated(EnumType.STRING)
     private Nivel nivel;
 
+    // el tiempo que la persona puede dedicarle (opcional, los dos o ninguno): lo usa el roadmap para no pasarse de horas
+    private Integer horasPorSemana;
+
+    private Integer semanas;
+
     // HU-22: sube de a uno con un UPDATE atomico (ver PerfilRepository), nunca desde aqui
     // es Integer con default en la tabla para que no se rompan los perfiles que ya existian
     @Column(columnDefinition = "integer default 0")
@@ -55,6 +60,11 @@ public class Perfil {
         this.nivel = nivel;
     }
 
+    public void actualizarTiempo(Integer horasPorSemana, Integer semanas) {
+        this.horasPorSemana = horasPorSemana;
+        this.semanas = semanas;
+    }
+
     public boolean estaCompleto() {
         return metas != null && !metas.isBlank() && !intereses.isEmpty() && nivel != null;
     }
@@ -77,6 +87,14 @@ public class Perfil {
 
     public Nivel getNivel() {
         return nivel;
+    }
+
+    public Integer getHorasPorSemana() {
+        return horasPorSemana;
+    }
+
+    public Integer getSemanas() {
+        return semanas;
     }
 
     public int getTriviasGanadas() {

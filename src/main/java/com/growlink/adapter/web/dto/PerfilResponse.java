@@ -7,9 +7,9 @@ import com.growlink.domain.Perfil;
 import java.util.Set;
 
 public record PerfilResponse(String metas, Set<Interes> intereses, Nivel nivel, boolean completo,
-                             int triviasGanadas) {
+                             int triviasGanadas, Integer horasPorSemana, Integer semanas) {
     public static PerfilResponse from(Perfil p) {
         return new PerfilResponse(p.getMetas(), p.getIntereses(), p.getNivel(), p.estaCompleto(),
-                p.getTriviasGanadas());
+                p.getTriviasGanadas(), p.getHorasPorSemana(), p.getSemanas());
     }
 }

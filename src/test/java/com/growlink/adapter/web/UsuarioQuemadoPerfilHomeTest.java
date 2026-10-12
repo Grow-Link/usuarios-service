@@ -89,6 +89,38 @@ class UsuarioQuemadoPerfilHomeTest {
     }
 
     @Test
+    void elTiempoDisponibleEsOpcionalSeGuardaCompletoYSeBorra() throws Exception {
+        String auth = "Bearer " + loginComo(4L);
+
+        // al principio no hay limite
+        mockMvc.perform(get("/api/perfil/me").header("Authorization", auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.horasPorSemana").doesNotExist());
+
+        // se guarda: horas por semana y semanas, juntas
+        mockMvc.perform(put("/api/perfil/tiempo").header("Authorization", auth)
+                        .contentType("application/json").content("{\"horasPorSemana\": 5, \"semanas\": 12}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.horasPorSemana").value(5))
+                .andExpect(jsonPath("$.semanas").value(12));
+
+        // un solo valor es un 400 claro (no un error del servidor)
+        mockMvc.perform(put("/api/perfil/tiempo").header("Authorization", auth)
+                        .contentType("application/json").content("{\"horasPorSemana\": 5}"))
+                .andExpect(status().isBadRequest());
+        // fuera de rango tambien
+        mockMvc.perform(put("/api/perfil/tiempo").header("Authorization", auth)
+                        .contentType("application/json").content("{\"horasPorSemana\": 200, \"semanas\": 12}"))
+                .andExpect(status().isBadRequest());
+
+        // sin valores se quita el limite
+        mockMvc.perform(put("/api/perfil/tiempo").header("Authorization", auth)
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.horasPorSemana").doesNotExist());
+    }
+
+    @Test
     void cadaRolVeSusPropiasSecciones() throws Exception {
         // Ana es USUARIO, solo deberia ver trivia y perfil
         String tokenAna = loginComo(1L);

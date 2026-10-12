@@ -57,6 +57,14 @@ public class PerfilService {
         return perfilRepository.save(perfil);
     }
 
+    // el tiempo es opcional: los dos valores o ninguno (null borra el limite); TiempoRequest ya lo valida
+    @Transactional
+    public Perfil actualizarTiempo(Long usuarioId, Integer horasPorSemana, Integer semanas) {
+        Perfil perfil = obtener(usuarioId);
+        perfil.actualizarTiempo(horasPorSemana, semanas);
+        return perfilRepository.save(perfil);
+    }
+
     @Transactional
     public Perfil actualizarNivel(Long usuarioId, Nivel nivel) {
         Perfil perfil = obtener(usuarioId);
