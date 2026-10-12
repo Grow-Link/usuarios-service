@@ -88,6 +88,39 @@ Lo suma trivia-service cuando alguien gana una partida, llamando a
   desde Java, asi que si un usuario gana dos partidas a la vez no se pierde
   ninguna (hay una prueba con 10 hilos que lo comprueba).
 
+## Jardín gamificado
+
+Cada roadmap completado (cursos-service) da una **semilla** de la categoría de ese
+roadmap; cada trivia ganada da una **gota de agua**. El jardín tiene 6 espacios
+(0 a 5): una semilla se planta en un espacio libre y pasa a ser **planta**, que
+se riega gastando una gota por riego. Con 3 riegos una planta queda **FLORECIDA**
+y ya no se puede regar más (las etapas en orden: `SEMILLA` → `BROTE` → `PLANTA` →
+`FLORECIDA`).
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| GET | /api/jardin | Gotas, semillas sin plantar y plantas. Antes de responder sincroniza semillas nuevas contra `GET /api/roadmap/completados` de cursos-service |
+| POST | /api/jardin/plantas/{id}/plantar | Planta una semilla propia en un espacio (`{"espacio": 0..5}`). 400 fuera de rango, 404 si no es tuya, 409 si ya estaba plantada o el espacio está ocupado |
+| POST | /api/jardin/plantas/{id}/regar | Riega una planta propia. 404 si no es tuya, 409 sin gotas o ya florecida |
+
+Todo pasa por el mismo JWT de siempre; cada quien ve y toca solo su propio jardín.
+
+- **Semillas idempotentes**: hay una restricción única `(usuario_id, roadmap_id)`,
+  así que sincronizar dos veces (o al mismo tiempo) el mismo roadmap completado
+  no duplica la semilla — mismo truco que `PerfilCreador` con el perfil nuevo
+  (`SemillaCreador` crea en su propia transacción y tolera el choque).
+- **Si cursos-service no responde**, la sincronización no revienta el jardín: se
+  loguea un warn y se sigue con las semillas que ya había.
+- **Plantar y regar son atómicos** (UPDATE con condición, nunca leer-y-escribir):
+  el espacio ocupado lo rechaza la restricción única `(usuario_id, espacio)`, y
+  regar con una sola gota entre dos peticiones simultáneas solo le funciona a una
+  (hay una prueba con hilos reales que lo comprueba).
+- El endpoint interno de trivias ganadas (`POST /api/interno/trivias-ganadas/{id}`)
+  ahora también suma 1 gota, en la misma operación atómica que suma la trivia. No
+  cambia su contrato ni su respuesta, así que trivia-service no se entera.
+- El usuario de demostración (Esteban) arranca con 3 gotas, una semilla sin
+  plantar y una planta con 2 riegos, para poder mostrar el jardín sin jugar nada.
+
 ## Despliegue
 
 Se despliega en Azure App Service, el flujo de ramas y ambientes esta

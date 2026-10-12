@@ -1,11 +1,14 @@
 package com.growlink.adapter.cursos;
 
+import com.growlink.adapter.cursos.CursosServiceClient.RoadmapCompletado;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
@@ -42,5 +45,27 @@ class CursosServiceClientTest {
                 .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
 
         assertThat(client.tieneRoadmap(5L, "Bearer token")).isFalse();
+    }
+
+    @Test
+    void parseaLosRoadmapsCompletadosParaElJardin() {
+        server.expect(requestTo("http://cursos-service/api/roadmap/completados?usuarioId=5"))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer token"))
+                .andRespond(withSuccess("""
+                        [{"roadmapId": 3, "categoria": "CIVIL", "titulo": "Roadmap de civil", "totalCursos": 4,
+                          "horasTotales": 20, "completadoEn": "2026-10-01T10:00:00Z"}]
+                        """, MediaType.APPLICATION_JSON));
+
+        List<RoadmapCompletado> completados = client.roadmapsCompletados(5L, "Bearer token");
+
+        assertThat(completados).containsExactly(new RoadmapCompletado(3L, "CIVIL", "Roadmap de civil"));
+    }
+
+    @Test
+    void listaVaciaSinRomperElJardinCuandoCursosServiceNoResponde() {
+        server.expect(requestTo("http://cursos-service/api/roadmap/completados?usuarioId=5"))
+                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
+
+        assertThat(client.roadmapsCompletados(5L, "Bearer token")).isEmpty();
     }
 }

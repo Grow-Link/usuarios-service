@@ -1,11 +1,13 @@
 package com.growlink.config;
 
 import com.growlink.adapter.persistence.PerfilRepository;
+import com.growlink.adapter.persistence.SemillaRepository;
 import com.growlink.adapter.persistence.UsuarioRepository;
 import com.growlink.domain.Interes;
 import com.growlink.domain.Nivel;
 import com.growlink.domain.Perfil;
 import com.growlink.domain.Rol;
+import com.growlink.domain.Semilla;
 import com.growlink.domain.Usuario;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
@@ -21,12 +23,19 @@ public class DataSeeder implements CommandLineRunner {
     static final long USUARIO_DEMO_ID = 5L;
     static final String USUARIO_DEMO_META = "Quiero ser desarrollador backend y trabajar con datos usando Python";
 
+    // roadmapId inventados, solo para el jardin de demostracion (no vienen de cursos-service)
+    static final long JARDIN_DEMO_ROADMAP_SEMILLA = 9001L;
+    static final long JARDIN_DEMO_ROADMAP_PLANTA = 9002L;
+
     private final UsuarioRepository usuarioRepository;
     private final PerfilRepository perfilRepository;
+    private final SemillaRepository semillaRepository;
 
-    public DataSeeder(UsuarioRepository usuarioRepository, PerfilRepository perfilRepository) {
+    public DataSeeder(UsuarioRepository usuarioRepository, PerfilRepository perfilRepository,
+                       SemillaRepository semillaRepository) {
         this.usuarioRepository = usuarioRepository;
         this.perfilRepository = perfilRepository;
+        this.semillaRepository = semillaRepository;
     }
 
     @Override
@@ -35,6 +44,37 @@ public class DataSeeder implements CommandLineRunner {
             sembrarUsuarios();
         }
         completarPerfilDemo();
+        sembrarJardinDemo();
+    }
+
+    // Esteban queda con 3 gotas, una semilla sin plantar y una planta con 2 riegos, para poder
+    // presentar el jardin sin jugar nada. Solo se hace una vez (si ya existen, no se vuelve a tocar,
+    // porque con ddl-auto: update la app se puede reiniciar muchas veces sobre la misma base).
+    private void sembrarJardinDemo() {
+        if (!usuarioRepository.existsById(USUARIO_DEMO_ID)) {
+            return;
+        }
+        boolean yaTieneSemilla = semillaRepository.existsByUsuarioIdAndRoadmapId(USUARIO_DEMO_ID, JARDIN_DEMO_ROADMAP_SEMILLA);
+        boolean yaTienePlanta = semillaRepository.existsByUsuarioIdAndRoadmapId(USUARIO_DEMO_ID, JARDIN_DEMO_ROADMAP_PLANTA);
+        if (yaTieneSemilla && yaTienePlanta) {
+            return;
+        }
+        if (!yaTieneSemilla) {
+            semillaRepository.save(new Semilla(USUARIO_DEMO_ID, JARDIN_DEMO_ROADMAP_SEMILLA,
+                    "INGENIERIA_SISTEMAS", "Fundamentos de programación"));
+        }
+        if (!yaTienePlanta) {
+            Semilla planta = new Semilla(USUARIO_DEMO_ID, JARDIN_DEMO_ROADMAP_PLANTA,
+                    "MATEMATICAS", "Álgebra lineal aplicada");
+            planta.plantar(0);
+            planta.regar();
+            planta.regar();
+            semillaRepository.save(planta);
+        }
+        Perfil perfil = perfilRepository.findByUsuarioId(USUARIO_DEMO_ID)
+                .orElseGet(() -> perfilRepository.save(new Perfil(USUARIO_DEMO_ID)));
+        perfil.sumarGotas(3);
+        perfilRepository.save(perfil);
     }
 
     // solo si el perfil de Esteban esta incompleto: si alguien ya lo lleno a mano, no se pisa
