@@ -24,6 +24,8 @@ public class SecurityConfig {
                         // se autentica con la llave interna dentro del controlador
                         .requestMatchers("/api/interno/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+                        // el balanceador y Azure preguntan por la salud sin credenciales (solo health, sin detalles)
+                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .anyRequest().authenticated())
                 // sin esto, pedir algo sin token da 403 en vez de 401
                 // ya nos paso una vez asi que lo dejamos explicito

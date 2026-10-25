@@ -143,6 +143,17 @@ duplican). El script `levantar.sh` del repo `infra` ya lo hace asi.
 | `GROWLINK_JWT_SECRET` | El secreto con el que se firman los tokens, tiene que ser el mismo en los tres servicios |
 | `GROWLINK_INTERNAL_KEY` | Llave para las llamadas entre servicios, la misma en trivia-service |
 | `GROWLINK_CURSOS_SERVICE_URL` | URL de cursos-service |
+| `GROWLINK_CURSOS_CONNECT_TIMEOUT_MS`, `GROWLINK_CURSOS_READ_TIMEOUT_MS` | Opcionales, el plazo maximo para conectar y para esperar la respuesta de cursos-service (por defecto `2000` y `3000` ms) |
+
+### Salud, trazabilidad y plazos
+
+- **Salud**: `GET /actuator/health` (y `/actuator/health/liveness` y `/readiness`) responde sin credenciales y sin
+  detalles. `readiness` incluye la base de datos. No se exponen otros endpoints de actuator.
+- **Trazabilidad**: cada peticion lleva `X-Request-Id` (se respeta uno valido, si no se crea), vuelve en la respuesta y
+  sale en cada linea del log como `[rid=...]`. La llamada a cursos-service lo reenvia, asi una peticion se sigue por
+  los dos servicios.
+- **Plazos**: si cursos-service se cuelga, el Home y el jardin siguen sin su respuesta a los pocos segundos (el Home
+  muestra "sin roadmap", el jardin una lista vacia) en vez de quedarse esperando.
 
 ## Pruebas
 

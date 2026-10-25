@@ -26,7 +26,27 @@ growlink:
     model: ${GROWLINK_AI_MODEL:claude-opus-5}
   cursos-service:
     base-url: ${GROWLINK_CURSOS_SERVICE_URL:http://localhost:8086}
+    # ATRIBUTO: disponibilidad. Si cursos-service no contesta en estos milisegundos se sigue sin el (el Home y el jardin
+    # degradan en vez de quedarse colgados esperando)
+    connect-timeout-ms: ${GROWLINK_CURSOS_CONNECT_TIMEOUT_MS:2000}
+    read-timeout-ms: ${GROWLINK_CURSOS_READ_TIMEOUT_MS:3000}
+
+# ATRIBUTO: disponibilidad. Solo se expone la salud (sin detalles: no filtra nombres de bases ni versiones) y sus
+# dos sondas: liveness (el proceso vive) y readiness (puede atender: incluye la base de datos).
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
 
 logging:
   level:
     com.growlink: INFO
+  pattern:
+    # ATRIBUTO: observabilidad. El id de la peticion (X-Request-Id) sale en cada linea del log
+    level: "%5p [rid=%X{rid:-}]"
