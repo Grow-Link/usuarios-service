@@ -31,6 +31,42 @@ growlink:
     connect-timeout-ms: ${GROWLINK_CURSOS_CONNECT_TIMEOUT_MS:2000}
     read-timeout-ms: ${GROWLINK_CURSOS_READ_TIMEOUT_MS:3000}
 
+# ATRIBUTO: seguridad. De donde sale la identidad de quien llama. El mismo interruptor que trivia-service y
+# cursos-service, y con los mismos nombres de variables, para que los tres se configuren igual.
+#
+#   legacy (por defecto) = como viene funcionando: el login quemado de /api/auth/login y los tokens que firma
+#                          este servicio. No se rompe ningun cliente de los que ya existen.
+#   oidc                 = la identidad la pone Microsoft (Entra ID). Cada peticion trae su JWT, se verifica la
+#                          firma contra el JWKS del emisor (solo RS256, con kid, exp, iss y aud) y el sub del
+#                          token se traduce a un usuario local, que se crea en el primer ingreso.
+#
+# Un valor distinto de esos dos tumba el arranque a proposito (ver AuthModeConfig): quedarse callado cayendo a
+# legacy seria desplegar con el login viejo creyendo que ya esta puesto el de Microsoft.
+auth:
+  mode: ${AUTH_MODE:legacy}
+  oidc:
+    # quien firma los tokens que se aceptan, p.ej. https://login.microsoftonline.com/<tenant>/v2.0
+    issuer-uri: ${AUTH_ISSUER_URI:}
+    # para que aplicacion tienen que venir, p.ej. api://growlink-usuarios
+    audience: ${AUTH_AUDIENCE:}
+    # Donde estan las llaves publicas. Si se deja vacio se asume el estandar de OIDC,
+    # <issuer-uri>/.well-known/jwks.json. OJO con Entra ID: ahi las llaves NO estan en esa ruta, hay que poner
+    # AUTH_JWKS_URI=https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys
+    jwks-uri: ${AUTH_JWKS_URI:}
+  # Los correos que quedan con rol ADMIN, separados por comas y sin distinguir mayusculas. ADMIN no se puede
+  # escoger desde la aplicacion (pedirlo sin estar en esta lista da 403): quien es administrador es una decision
+  # del despliegue, porque si se pudiera escoger, cualquiera se lo daria.
+  admin-emails: ${AUTH_ADMIN_EMAILS:}
+
+# ATRIBUTO: seguridad y disponibilidad. Tope de peticiones por IP (ver LimitePorIpFilter), para todos los
+# endpoints y antes de la seguridad y de la base de datos. La IP real se lee del primer valor de X-Forwarded-For
+# (delante hay un balanceador) y si no llega, de la del socket. Cada replica cuenta por su lado.
+# maximo-por-minuto: 0 lo apaga.
+seguridad:
+  limite-ip:
+    maximo-por-minuto: ${LIMITE_IP_MAXIMO_POR_MINUTO:300}
+    ventana-segundos: ${LIMITE_IP_VENTANA_SEGUNDOS:60}
+
 # ATRIBUTO: disponibilidad. Solo se expone la salud (sin detalles: no filtra nombres de bases ni versiones) y sus
 # dos sondas: liveness (el proceso vive) y readiness (puede atender: incluye la base de datos).
 management:

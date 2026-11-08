@@ -16,3 +16,10 @@ growlink:
   # esta corriendo o no en la maquina de quien los ejecuta
   cursos-service:
     base-url: http://localhost:19999
+
+# El tope por IP se apaga en las pruebas: todas salen de la misma IP y, sumadas, se pasarian del tope y se
+# empezarian a estorbar entre ellas (una prueba fallaria por culpa de las que corrieron antes). LimitePorIpTest
+# lo prende con el valor de produccion y en su propio contexto, que es donde esa regla se prueba de verdad.
+seguridad:
+  limite-ip:
+    maximo-por-minuto: 0

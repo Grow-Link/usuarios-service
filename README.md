@@ -121,6 +121,57 @@ Todo pasa por el mismo JWT de siempre; cada quien ve y toca solo su propio jard�
 - El usuario de demostración (Esteban) arranca con 3 gotas, una semilla sin
   plantar y una planta con 2 riegos, para poder mostrar el jardín sin jugar nada.
 
+## Entrar con Microsoft, roles y tope por IP
+
+El servicio tiene dos formas de saber quien llama, con el interruptor `AUTH_MODE` (el mismo que trivia-service y
+cursos-service):
+
+- `legacy` (por defecto): el login quemado de `POST /api/auth/login` y los tokens que firma este servicio. Nada de
+  lo que ya funcionaba cambia.
+- `oidc`: la identidad la pone Microsoft (Entra ID). Cada peticion trae su JWT y se verifica **solo RS256**, con
+  `kid` obligatorio, `exp` obligatorio, y el emisor (`iss`) y la audiencia (`aud`) que digan `AUTH_ISSUER_URI` y
+  `AUTH_AUDIENCE`. Las llaves publicas se bajan del JWKS del emisor y se cachean (si llega un `kid` desconocido se
+  recarga, como maximo una vez por minuto, para que un token con un `kid` inventado no sirva de ataque contra el
+  emisor). Lo que no pasa recibe 401, con el motivo en el log y el `X-Request-Id` de la peticion.
+
+Un `AUTH_MODE` mal escrito **tumba el arranque** a proposito: quedarse callado cayendo a `legacy` seria desplegar
+con el login viejo creyendo que ya esta puesto el de Microsoft.
+
+### El usuario local y su rol
+
+En el primer ingreso se crea el usuario local con el `sub` del token (columna unica `proveedor_sub`), el correo
+(claim `email` o, si no viene, `preferred_username`) y el nombre. Arranca como `USUARIO` con `rolElegido=false`. Se
+usa el `sub` y no el correo porque el correo se puede cambiar, y el de una cuenta borrada se le puede dar a otra
+persona.
+
+- `GET /api/usuarios/me` devuelve `usuarioId` (numerico), `rol`, `rolElegido`, `correo` y `nombre`. Es el endpoint
+  con el que cursos-service y trivia-service traducen `sub` -> `usuarioId` + `rol`.
+- `PUT /api/usuarios/me/rol` con `{"rol":"PUBLICADOR"}` acepta `USUARIO` o `PUBLICADOR` y marca `rolElegido=true`.
+  Se puede cambiar entre esos dos cuando la persona quiera.
+- `ADMIN` no se escoge. Si el correo esta en `AUTH_ADMIN_EMAILS` (lista separada por comas, sin distinguir
+  mayusculas), el usuario queda `ADMIN` con `rolElegido=true`. Pedir `ADMIN` sin estar en la lista responde 403 y
+  deja el intento en el log, y un `ADMIN` no puede bajarse el rol por ese endpoint. La lista se revisa en cada
+  ingreso, asi que agregar un correo surte efecto con que la persona vuelva a entrar; quitarlo **no** le baja el
+  rol (eso se hace a mano, para no quedarse sin administradores por una variable mal copiada).
+
+### Tope de peticiones por IP
+
+Mas de `LIMITE_IP_MAXIMO_POR_MINUTO` peticiones (300 por defecto) desde la misma IP reciben 429 con `Retry-After`.
+La IP real se lee del primer valor de `X-Forwarded-For` (delante hay un balanceador) y si no llega, la del socket.
+Cada replica cuenta por su lado, asi que con N replicas el tope real es de hasta N veces el configurado;
+`LIMITE_IP_MAXIMO_POR_MINUTO=0` lo apaga.
+
+### Eventos de seguridad
+
+Tres contadores de Micrometer, y una linea de log con el `X-Request-Id` por cada evento (nunca el token: un token
+en el log es una credencial en el log):
+
+| Metrica | Que cuenta |
+|---|---|
+| `growlink.seguridad.tokens-invalidos` | 401: el token falta o no paso la verificacion |
+| `growlink.http.limite-ip.rechazos` | 429: peticiones frenadas por el tope por IP (mismo nombre que en cursos-service) |
+| `growlink.seguridad.prohibidos` | 403: pidieron `ADMIN` sin estar en la lista, la llave interna no cuadra, o una regla de autorizacion dijo no |
+
 ## Despliegue
 
 Se despliega en Azure App Service, el flujo de ramas y ambientes esta
@@ -144,6 +195,12 @@ duplican). El script `levantar.sh` del repo `infra` ya lo hace asi.
 | `GROWLINK_INTERNAL_KEY` | Llave para las llamadas entre servicios, la misma en trivia-service |
 | `GROWLINK_CURSOS_SERVICE_URL` | URL de cursos-service |
 | `GROWLINK_CURSOS_CONNECT_TIMEOUT_MS`, `GROWLINK_CURSOS_READ_TIMEOUT_MS` | Opcionales, el plazo maximo para conectar y para esperar la respuesta de cursos-service (por defecto `2000` y `3000` ms) |
+| `AUTH_MODE` | `legacy` (por defecto) o `oidc`. Cualquier otro valor tumba el arranque |
+| `AUTH_ISSUER_URI` | Solo con `oidc`: quien firma los tokens, p.ej. `https://login.microsoftonline.com/<tenant>/v2.0` |
+| `AUTH_AUDIENCE` | Solo con `oidc`: para que aplicacion tienen que venir, p.ej. `api://growlink-usuarios` |
+| `AUTH_JWKS_URI` | Donde estan las llaves publicas. Si se deja vacio se asume `<emisor>/.well-known/jwks.json`; **con Entra ID hay que ponerla**: `https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys` |
+| `AUTH_ADMIN_EMAILS` | Correos con rol `ADMIN`, separados por comas (sin distinguir mayusculas). Vacio = ningun admin |
+| `LIMITE_IP_MAXIMO_POR_MINUTO`, `LIMITE_IP_VENTANA_SEGUNDOS` | Opcionales, el tope de peticiones por IP (por defecto `300` por `60` s). `0` lo apaga |
 
 ### Salud, trazabilidad y plazos
 
