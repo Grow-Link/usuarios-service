@@ -5,7 +5,9 @@ import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtParser;
 import io.jsonwebtoken.Jwts;
 
+import java.util.Collections;
 import java.util.Date;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 // Verificacion del JWT que emite Microsoft (Entra ID) cuando auth.mode=oidc. Por aqui pasan todas
@@ -18,9 +20,12 @@ import java.util.Set;
 //   kid       el token tiene que decir con cual de las llaves del emisor se firmo (JwksKeyLocator)
 //   exp       y tiene que traerlo: un token sin exp no vence NUNCA, y uno robado serviria para siempre
 //   iss       la firma solo dice "esto lo firmo alguien con esa llave privada", no "lo firmo quien
-//             yo espero": sin iss entraria un token valido de otro tenant o de otro proveedor
+//             yo espero": sin iss entraria un token valido de otro proveedor. Quien decide si el
+//             emisor sirve es ValidadorDeEmisor, porque eso depende de si la app esta registrada
+//             para un solo directorio o para cualquiera (ver auth.multi-tenant)
 //   aud       sin aud serviria el access token que el MISMO emisor le dio a la persona para
-//             cualquier otra aplicacion
+//             cualquier otra aplicacion. Se acepta una lista: segun como quede configurada la app,
+//             Entra pone api://<client-id> o el <client-id> pelado
 //   sub       la identidad de la persona, y de ningun otro lado
 //
 // Es aparte de TokenService a proposito: TokenService emite y valida los tokens HS256 del modo
@@ -45,24 +50,31 @@ public class OidcTokenVerificador {
     private static final String CLAIM_NOMBRE = "name";
 
     private final JwtParser parser;
-    private final String issuer;
-    private final String audience;
+    private final ValidadorDeEmisor emisor;
+    private final Set<String> audiencias;
 
     // Lo que el token dice de la persona. El sub es la llave con la que se busca (o se crea) el
     // usuario local; correo y nombre pueden venir vacios.
     public record Identidad(String sub, String correo, String nombre) {
     }
 
-    public OidcTokenVerificador(String issuer, String audience, JwksKeyLocator keyLocator) {
+    public OidcTokenVerificador(ValidadorDeEmisor emisor, Set<String> audiencias, JwksKeyLocator keyLocator) {
         // parser SIN .unsecured(): asi jjwt rechaza por su cuenta los JWT con alg=none, que es el
         // otro ataque clasico (quitarle la firma al token y que el verificador lo acepte igual)
-        this(issuer, audience, Jwts.parser().keyLocator(keyLocator).build());
+        this(emisor, audiencias, Jwts.parser().keyLocator(keyLocator).build());
+    }
+
+    // el caso simple, un emisor fijo y una sola audiencia
+    public OidcTokenVerificador(String issuer, String audience, JwksKeyLocator keyLocator) {
+        this(ValidadorDeEmisor.fijo(issuer), Set.of(audience), keyLocator);
     }
 
     // para las pruebas, que le pasan un parser ya armado
-    OidcTokenVerificador(String issuer, String audience, JwtParser parser) {
-        this.issuer = issuer;
-        this.audience = audience;
+    OidcTokenVerificador(ValidadorDeEmisor emisor, Set<String> audiencias, JwtParser parser) {
+        this.emisor = emisor;
+        // se guarda en orden para que el motivo del rechazo salga en el log igual que viene
+        // configurado AUTH_AUDIENCE, que es como lo va a leer quien tenga que corregirlo
+        this.audiencias = Collections.unmodifiableSet(new LinkedHashSet<>(audiencias));
         this.parser = parser;
     }
 
@@ -106,24 +118,23 @@ public class OidcTokenVerificador {
         }
     }
 
+    // Un emisor fijo o cualquier tenant de Entra ID, segun auth.multi-tenant: la decision esta en
+    // ValidadorDeEmisor, que es lo unico que cambia entre los dos modos
     private void exigirEmisor(Claims claims) {
-        if (issuer == null || issuer.isBlank()) {
-            return; // sin emisor configurado no hay nada que comparar (AuthModeConfig lo exige al arrancar)
-        }
-        if (!issuer.equals(claims.getIssuer())) {
-            throw new TokenInvalidoException(
-                    "el emisor del token (" + claims.getIssuer() + ") no es " + issuer);
-        }
+        emisor.exigir(claims);
     }
 
+    // El token pasa si su aud coincide con ALGUNA de las configuradas. Son varias porque, segun
+    // como quede registrada la aplicacion, Entra pone api://<client-id> o el <client-id> pelado, y
+    // tener que adivinar cual de los dos obligaria a redeplegar para corregirlo.
     private void exigirAudiencia(Claims claims) {
-        if (audience == null || audience.isBlank()) {
-            return;
+        if (audiencias.isEmpty()) {
+            return; // sin audiencia configurada no hay nada que comparar (AuthModeConfig la exige al arrancar)
         }
-        Set<String> audiencias = claims.getAudience();
-        if (audiencias == null || !audiencias.contains(audience)) {
+        Set<String> delToken = claims.getAudience();
+        if (delToken == null || audiencias.stream().noneMatch(delToken::contains)) {
             throw new TokenInvalidoException(
-                    "el token no tiene la audiencia " + audience + ", trae " + audiencias);
+                    "el token no tiene ninguna de las audiencias " + audiencias + ", trae " + delToken);
         }
     }
 

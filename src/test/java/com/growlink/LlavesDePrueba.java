@@ -102,6 +102,40 @@ public final class LlavesDePrueba {
         return new Token(sub).firmar(PAR);
     }
 
+    /** Una audiencia distinta de la de siempre, para probar la lista de audiencias aceptadas. */
+    public static String tokenParaLaAudiencia(String audiencia, String sub) {
+        return new Token(sub).audiencia(audiencia).firmar(PAR);
+    }
+
+    // ---- multi-tenant (auth.multi-tenant=true) ----
+
+    /** El emisor v2.0 que Entra ID pone en el token de quien inicia sesion en ese directorio. */
+    public static String emisorDeTenant(String tenantId) {
+        return "https://login.microsoftonline.com/" + tenantId + "/v2.0";
+    }
+
+    /** Lo que llega de verdad con la app registrada como multi-tenant: el iss y el tid del tenant de la persona. */
+    public static String tokenDeTenant(String tenantId, String sub, String correo, String nombre) {
+        return new Token(sub).emisor(emisorDeTenant(tenantId)).tid(tenantId)
+                .correo(correo).nombre(nombre).firmar(PAR);
+    }
+
+    /**
+     * Un token con el iss y el tid que pida la prueba, para los casos en que no cuadran: un tid de
+     * otro tenant, un host parecido al de Microsoft, http en vez de https, o un emisor sin /v2.0.
+     * Va firmado con la llave buena a proposito: lo que se prueba es la validacion del emisor, no la
+     * de la firma.
+     */
+    public static String tokenConEmisorYTid(String emisor, String tid, String sub) {
+        return new Token(sub).emisor(emisor).tid(tid).firmar(PAR);
+    }
+
+    /** Un token de ese tenant dirigido a esa audiencia, para probar la lista de audiencias. */
+    public static String tokenDeTenantParaLaAudiencia(String tenantId, String audiencia, String sub) {
+        return new Token(sub).emisor(emisorDeTenant(tenantId)).tid(tenantId)
+                .audiencia(audiencia).firmar(PAR);
+    }
+
     // ---- tokens que no deben pasar ----
 
     // vencido hace un minuto: jjwt no aplica tolerancia de reloj por defecto, asi que esto basta
@@ -191,9 +225,15 @@ public final class LlavesDePrueba {
         private String correo;
         private String preferredUsername;
         private String nombre;
+        private String tid;
 
         private Token(String sub) {
             this.sub = sub;
+        }
+
+        private Token tid(String tid) {
+            this.tid = tid;
+            return this;
         }
 
         private Token emisor(String emisor) {
@@ -251,6 +291,9 @@ public final class LlavesDePrueba {
             }
             if (nombre != null) {
                 builder.claim("name", nombre);
+            }
+            if (tid != null) {
+                builder.claim("tid", tid);
             }
             return builder.signWith(par.getPrivate(), Jwts.SIG.RS256).compact();
         }

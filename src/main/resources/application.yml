@@ -44,14 +44,42 @@ growlink:
 # legacy seria desplegar con el login viejo creyendo que ya esta puesto el de Microsoft.
 auth:
   mode: ${AUTH_MODE:legacy}
+
+  # Para cuantos directorios de Entra ID vale la app (ver ValidadorDeEmisor):
+  #
+  #   false (por defecto) = un solo directorio. El emisor es el de AUTH_ISSUER_URI, comparado tal cual. Es el
+  #                         comportamiento de siempre, no cambia nada.
+  #   true                = la app esta registrada para cuentas de cualquier directorio organizacional y cuentas
+  #                         personales de Microsoft. Entonces el iss del token trae el tenant de QUIEN inicia
+  #                         sesion y no se puede comparar con un valor fijo: habria que rechazar a casi todos.
+  #
+  # Con true NO se da por bueno cualquier emisor. Se exige que el iss sea exactamente un emisor v2.0 de Entra
+  # (https://login.microsoftonline.com/<guid-del-tenant>/v2.0, con el patron completo y anclado, asi que un
+  # http:// o un host como login.microsoftonline.com.evil.com se rechazan) y que el claim tid sea ese mismo GUID.
+  multi-tenant: ${AUTH_MULTI_TENANT:false}
+
+  # Solo con multi-tenant: GUID de los tenants que pueden entrar, separados por comas. Vacio = cualquier tenant
+  # que cumpla lo de arriba, que es lo que quiere decir multi-tenant. Un GUID mal escrito tumba el arranque, para
+  # que no deje fuera a una organizacion entera sin que nadie se entere.
+  # El tenant de las cuentas personales de Microsoft es 9188040d-6c67-4c5b-b112-36a304b66dad: si se pone lista y
+  # se quiere que esas cuentas sigan entrando, hay que incluirlo.
+  allowed-tenants: ${AUTH_ALLOWED_TENANTS:}
+
   oidc:
-    # quien firma los tokens que se aceptan, p.ej. https://login.microsoftonline.com/<tenant>/v2.0
+    # Quien firma los tokens que se aceptan, p.ej. https://login.microsoftonline.com/<tenant>/v2.0. Obligatorio
+    # con multi-tenant=false; con multi-tenant=true no se usa (el emisor viene en el token y se valida por patron).
     issuer-uri: ${AUTH_ISSUER_URI:}
-    # para que aplicacion tienen que venir, p.ej. api://growlink-usuarios
+    # Para que aplicacion tienen que venir los tokens. Acepta una LISTA separada por comas y basta con que el aud
+    # del token coincida con una: segun como quede configurada la app, Entra pone api://<client-id> o el
+    # <client-id> pelado, y tener que adivinar cual obligaria a redeplegar para corregirlo.
+    # p.ej. api://growlink-usuarios,7f3c1b2a-....
     audience: ${AUTH_AUDIENCE:}
-    # Donde estan las llaves publicas. Si se deja vacio se asume el estandar de OIDC,
-    # <issuer-uri>/.well-known/jwks.json. OJO con Entra ID: ahi las llaves NO estan en esa ruta, hay que poner
-    # AUTH_JWKS_URI=https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys
+    # Donde estan las llaves publicas. Si se deja vacio:
+    #   multi-tenant=true  -> https://login.microsoftonline.com/common/discovery/v2.0/keys (de ahi publica Entra
+    #                         las llaves de firma de todos los tenants)
+    #   multi-tenant=false -> el estandar de OIDC, <issuer-uri>/.well-known/jwks.json. OJO con Entra ID: ahi las
+    #                         llaves NO estan en esa ruta, hay que poner
+    #                         AUTH_JWKS_URI=https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys
     jwks-uri: ${AUTH_JWKS_URI:}
   # Los correos que quedan con rol ADMIN, separados por comas y sin distinguir mayusculas. ADMIN no se puede
   # escoger desde la aplicacion (pedirlo sin estar en esta lista da 403): quien es administrador es una decision

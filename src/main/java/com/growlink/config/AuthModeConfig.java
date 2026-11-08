@@ -3,6 +3,7 @@ package com.growlink.config;
 import com.growlink.adapter.security.JwksKeyLocator;
 import com.growlink.adapter.security.OidcAuthenticationFilter;
 import com.growlink.adapter.security.OidcTokenVerificador;
+import com.growlink.adapter.security.ValidadorDeEmisor;
 import com.growlink.application.IngresoService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,6 +12,11 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 // El interruptor auth.mode, el mismo que trivia-service y cursos-service:
 //
@@ -42,32 +48,99 @@ public class AuthModeConfig {
                 : "sigue el login quemado con tokens propios");
     }
 
+    // El JWKS de /common sirve para los dos modos de multi-tenant (es de donde Entra publica las
+    // llaves de firma de todos los tenants), por eso es el valor por defecto cuando
+    // auth.multi-tenant=true. Igual se puede cambiar con AUTH_JWKS_URI.
+    static final String JWKS_DE_ENTRA_COMMON = "https://login.microsoftonline.com/common/discovery/v2.0/keys";
+
     // La llave publica se lee del JWKS del emisor, no se configura a mano: asi una rotacion de
     // llaves del proveedor no obliga a redeplegar este servicio.
     //
-    // Si no se configura auth.oidc.jwks-uri se asume la ruta estandar de OIDC bajo el emisor. OJO
-    // con Entra ID: ahi las llaves NO estan en esa ruta, sino en
-    // https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys, asi que con Microsoft hay que
-    // poner AUTH_JWKS_URI (esta en el README). Se deja asi, explicito, en vez de leer el documento
-    // de descubrimiento del emisor al arrancar: es el mismo trato que en trivia-service, y el
-    // servicio no depende de una llamada de red para poder arrancar.
+    // De donde sale el JWKS si no se configura auth.oidc.jwks-uri:
+    //   multi-tenant=true   el /common de Entra (JWKS_DE_ENTRA_COMMON), que es lo que corresponde
+    //                       cuando el emisor no es uno fijo
+    //   multi-tenant=false  la ruta estandar de OIDC bajo el emisor. OJO con Entra ID: ahi las
+    //                       llaves NO estan en esa ruta, sino en
+    //                       https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys, asi que
+    //                       con Microsoft y un solo tenant hay que poner AUTH_JWKS_URI
+    //
+    // Se deja asi, explicito, en vez de leer el documento de descubrimiento del emisor al arrancar:
+    // es el mismo trato que en trivia-service, y el servicio no depende de una llamada de red para
+    // poder arrancar.
     @Bean
     @ConditionalOnProperty(name = "auth.mode", havingValue = MODO_OIDC)
     public OidcTokenVerificador oidcTokenVerificador(
             @Value("${auth.oidc.issuer-uri:}") String issuerUri,
             @Value("${auth.oidc.audience:}") String audience,
-            @Value("${auth.oidc.jwks-uri:}") String jwksUri) {
-        // en modo oidc estas dos no son opcionales: sin emisor, cualquiera que tenga una llave
-        // privada propia puede firmarse un token; sin audiencia sirve el token que el mismo emisor
-        // dio para otra aplicacion del mismo tenant
-        exigir(issuerUri, "auth.oidc.issuer-uri (AUTH_ISSUER_URI)");
+            @Value("${auth.oidc.jwks-uri:}") String jwksUri,
+            @Value("${auth.multi-tenant:false}") boolean multiTenant,
+            @Value("${auth.allowed-tenants:}") String tenantsPermitidos) {
+        // la audiencia no es opcional en ninguno de los dos modos: sin ella sirve el token que el
+        // mismo emisor dio para otra aplicacion
         exigir(audience, "auth.oidc.audience (AUTH_AUDIENCE)");
+        Set<String> audiencias = lista(audience);
 
-        String uriDelJwks = (jwksUri == null || jwksUri.isBlank())
-                ? issuerUri.replaceAll("/+$", "") + "/.well-known/jwks.json"
-                : jwksUri.trim();
-        log.info("modo oidc: emisor={} audiencia={} jwks={}", issuerUri, audience, uriDelJwks);
-        return new OidcTokenVerificador(issuerUri.trim(), audience.trim(), new JwksKeyLocator(uriDelJwks));
+        ValidadorDeEmisor emisor = multiTenant
+                ? emisorMultiTenant(issuerUri, tenantsPermitidos)
+                : emisorFijo(issuerUri);
+
+        String uriDelJwks = uriDelJwks(jwksUri, issuerUri, multiTenant);
+        log.info("modo oidc: multi-tenant={} emisor={} audiencias={} jwks={}", multiTenant,
+                multiTenant ? "cualquier tenant v2.0 de Entra ID" + tenantsEnElLog(emisor) : issuerUri,
+                audiencias, uriDelJwks);
+        return new OidcTokenVerificador(emisor, audiencias, new JwksKeyLocator(uriDelJwks));
+    }
+
+    // Un solo directorio: el emisor es obligatorio, porque sin el cualquiera que tenga una llave
+    // privada propia puede firmarse un token
+    private static ValidadorDeEmisor emisorFijo(String issuerUri) {
+        exigir(issuerUri, "auth.oidc.issuer-uri (AUTH_ISSUER_URI)");
+        return ValidadorDeEmisor.fijo(issuerUri.trim());
+    }
+
+    // Cualquier directorio: el emisor viene en el token y lo valida ValidadorDeEmisor contra el
+    // patron de Entra ID, asi que AUTH_ISSUER_URI ya no aplica. Si viene puesto se avisa, porque es
+    // justo el tipo de cosa que hace pensar que esta configurado algo que no se esta usando.
+    private static ValidadorDeEmisor emisorMultiTenant(String issuerUri, String tenantsPermitidos) {
+        if (issuerUri != null && !issuerUri.isBlank()) {
+            log.warn("con auth.multi-tenant=true no se usa AUTH_ISSUER_URI ({}): el emisor se valida"
+                    + " contra el patron de Entra ID y el tid de cada token", issuerUri);
+        }
+        Set<String> tenants = lista(tenantsPermitidos);
+        // un GUID mal escrito en AUTH_ALLOWED_TENANTS dejaria fuera a un tenant entero sin que nadie
+        // se enterara hasta que alguien de esa organizacion no pudiera entrar: mejor no arrancar
+        tenants.stream().filter(tenant -> !ValidadorDeEmisor.esGuid(tenant)).findFirst()
+                .ifPresent(malo -> {
+                    throw new IllegalStateException("auth.allowed-tenants (AUTH_ALLOWED_TENANTS) solo"
+                            + " acepta GUID de tenant, y llego \"" + malo + "\"");
+                });
+        return ValidadorDeEmisor.multiTenant(tenants);
+    }
+
+    private static String uriDelJwks(String jwksUri, String issuerUri, boolean multiTenant) {
+        if (jwksUri != null && !jwksUri.isBlank()) {
+            return jwksUri.trim();
+        }
+        return multiTenant
+                ? JWKS_DE_ENTRA_COMMON
+                : issuerUri.replaceAll("/+$", "") + "/.well-known/jwks.json";
+    }
+
+    // una lista separada por comas, sin espacios ni vacios, y en el orden en que viene configurada
+    private static Set<String> lista(String valores) {
+        if (valores == null) {
+            return new LinkedHashSet<>();
+        }
+        return Arrays.stream(valores.split(","))
+                .map(String::trim)
+                .filter(valor -> !valor.isEmpty())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private static String tenantsEnElLog(ValidadorDeEmisor emisor) {
+        return emisor.getTenantsPermitidos().isEmpty()
+                ? ""
+                : " limitado a " + emisor.getTenantsPermitidos();
     }
 
     @Bean

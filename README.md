@@ -129,13 +129,63 @@ cursos-service):
 - `legacy` (por defecto): el login quemado de `POST /api/auth/login` y los tokens que firma este servicio. Nada de
   lo que ya funcionaba cambia.
 - `oidc`: la identidad la pone Microsoft (Entra ID). Cada peticion trae su JWT y se verifica **solo RS256**, con
-  `kid` obligatorio, `exp` obligatorio, y el emisor (`iss`) y la audiencia (`aud`) que digan `AUTH_ISSUER_URI` y
-  `AUTH_AUDIENCE`. Las llaves publicas se bajan del JWKS del emisor y se cachean (si llega un `kid` desconocido se
-  recarga, como maximo una vez por minuto, para que un token con un `kid` inventado no sirva de ataque contra el
-  emisor). Lo que no pasa recibe 401, con el motivo en el log y el `X-Request-Id` de la peticion.
+  `kid` obligatorio, `exp` obligatorio, y el emisor (`iss`) y la audiencia (`aud`) que digan la configuracion (ver
+  multi-tenant, mas abajo). Las llaves publicas se bajan del JWKS del emisor y se cachean (si llega un `kid`
+  desconocido se recarga, como maximo una vez por minuto, para que un token con un `kid` inventado no sirva de
+  ataque contra el emisor). Lo que no pasa recibe 401, con el motivo en el log y el `X-Request-Id` de la peticion.
 
 Un `AUTH_MODE` mal escrito **tumba el arranque** a proposito: quedarse callado cayendo a `legacy` seria desplegar
 con el login viejo creyendo que ya esta puesto el de Microsoft.
+
+### Un directorio o cualquiera (multi-tenant)
+
+La app se registra en Entra ID como **multi-tenant** (cuentas de cualquier directorio organizacional y cuentas
+personales de Microsoft). Con eso el `iss` del token trae el tenant de **quien inicia sesion**, no uno fijo, asi
+que compararlo con un solo emisor rechazaria a casi todos. El interruptor es `AUTH_MULTI_TENANT`:
+
+- `false` (por defecto): un solo directorio. El emisor es el de `AUTH_ISSUER_URI`, comparado tal cual. **Es el
+  comportamiento de siempre, no cambia nada.**
+- `true`: se acepta cualquier tenant, pero sin aflojar la validacion. Se exigen tres cosas:
+  1. que el `iss` sea exactamente un emisor v2.0 de Entra, con el patron completo y anclado
+     (`https://login.microsoftonline.com/<guid-del-tenant>/v2.0`). Esto es lo que rechaza los parecidos, que es el
+     ataque de este modo: un `http://` en vez de `https://`, un host como `login.microsoftonline.com.evil.com`, un
+     emisor sin `/v2.0`, o `/common` en vez del GUID;
+  2. que el claim `tid` sea **el mismo GUID** que aparece en el `iss`, porque el `tid` es el dato con el que se
+     decide de que organizacion es la persona;
+  3. que ese tenant este en `AUTH_ALLOWED_TENANTS`, si la lista trae algo. Vacia = cualquier tenant que cumpla 1 y
+     2. Un GUID mal escrito en la lista **tumba el arranque**, para que no deje fuera a una organizacion entera sin
+     que nadie se entere.
+
+Las cuentas personales de Microsoft entran por el mismo camino: su emisor es el del tenant de MSA
+(`9188040d-6c67-4c5b-b112-36a304b66dad`), que es un GUID como cualquier otro. Si se pone `AUTH_ALLOWED_TENANTS` y
+se quiere que esas cuentas sigan entrando, hay que incluirlo.
+
+`AUTH_AUDIENCE` acepta una **lista separada por comas** y basta con que el `aud` del token coincida con una: segun
+como quede configurada la app, Entra pone `api://<client-id>` o el `<client-id>` pelado.
+
+Ejemplo de configuracion para Entra multi-tenant (el `AUTH_JWKS_URI` ya es el valor por defecto en este modo, se
+deja escrito para que se vea de donde salen las llaves):
+
+```bash
+AUTH_MODE=oidc
+AUTH_MULTI_TENANT=true
+AUTH_AUDIENCE=api://growlink-usuarios,7f3c1b2a-0000-0000-0000-abcdefabcdef
+AUTH_JWKS_URI=https://login.microsoftonline.com/common/discovery/v2.0/keys
+# opcional: solo estas organizaciones (vacio = cualquiera)
+AUTH_ALLOWED_TENANTS=11111111-2222-3333-4444-555555555555
+AUTH_ADMIN_EMAILS=jefa@growlink.co
+# con multi-tenant NO se usa AUTH_ISSUER_URI
+```
+
+Y para un solo directorio (el modo de antes):
+
+```bash
+AUTH_MODE=oidc
+AUTH_MULTI_TENANT=false
+AUTH_ISSUER_URI=https://login.microsoftonline.com/<tenant>/v2.0
+AUTH_AUDIENCE=api://growlink-usuarios
+AUTH_JWKS_URI=https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys
+```
 
 ### El usuario local y su rol
 
@@ -196,9 +246,11 @@ duplican). El script `levantar.sh` del repo `infra` ya lo hace asi.
 | `GROWLINK_CURSOS_SERVICE_URL` | URL de cursos-service |
 | `GROWLINK_CURSOS_CONNECT_TIMEOUT_MS`, `GROWLINK_CURSOS_READ_TIMEOUT_MS` | Opcionales, el plazo maximo para conectar y para esperar la respuesta de cursos-service (por defecto `2000` y `3000` ms) |
 | `AUTH_MODE` | `legacy` (por defecto) o `oidc`. Cualquier otro valor tumba el arranque |
-| `AUTH_ISSUER_URI` | Solo con `oidc`: quien firma los tokens, p.ej. `https://login.microsoftonline.com/<tenant>/v2.0` |
-| `AUTH_AUDIENCE` | Solo con `oidc`: para que aplicacion tienen que venir, p.ej. `api://growlink-usuarios` |
-| `AUTH_JWKS_URI` | Donde estan las llaves publicas. Si se deja vacio se asume `<emisor>/.well-known/jwks.json`; **con Entra ID hay que ponerla**: `https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys` |
+| `AUTH_MULTI_TENANT` | `false` (por defecto) = un solo directorio, emisor fijo. `true` = cualquier tenant de Entra, validando el patron del `iss` y que el `tid` cuadre |
+| `AUTH_ALLOWED_TENANTS` | Solo con multi-tenant: GUID de tenants permitidos, separados por comas. Vacio = cualquiera. Un GUID mal escrito tumba el arranque |
+| `AUTH_ISSUER_URI` | Solo con `oidc` y `AUTH_MULTI_TENANT=false`: quien firma los tokens, p.ej. `https://login.microsoftonline.com/<tenant>/v2.0`. Con multi-tenant no se usa |
+| `AUTH_AUDIENCE` | Solo con `oidc`: para que aplicacion tienen que venir. **Lista separada por comas**, basta que coincida una, p.ej. `api://growlink-usuarios,<client-id>` |
+| `AUTH_JWKS_URI` | Donde estan las llaves publicas. Vacio con multi-tenant = `https://login.microsoftonline.com/common/discovery/v2.0/keys`; vacio con un solo tenant = `<emisor>/.well-known/jwks.json`, y ahi **con Entra ID hay que ponerla**: `https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys` |
 | `AUTH_ADMIN_EMAILS` | Correos con rol `ADMIN`, separados por comas (sin distinguir mayusculas). Vacio = ningun admin |
 | `LIMITE_IP_MAXIMO_POR_MINUTO`, `LIMITE_IP_VENTANA_SEGUNDOS` | Opcionales, el tope de peticiones por IP (por defecto `300` por `60` s). `0` lo apaga |
 
