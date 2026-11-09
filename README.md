@@ -121,6 +121,107 @@ Todo pasa por el mismo JWT de siempre; cada quien ve y toca solo su propio jard�
 - El usuario de demostración (Esteban) arranca con 3 gotas, una semilla sin
   plantar y una planta con 2 riegos, para poder mostrar el jardín sin jugar nada.
 
+## Entrar con Microsoft, roles y tope por IP
+
+El servicio tiene dos formas de saber quien llama, con el interruptor `AUTH_MODE` (el mismo que trivia-service y
+cursos-service):
+
+- `legacy` (por defecto): el login quemado de `POST /api/auth/login` y los tokens que firma este servicio. Nada de
+  lo que ya funcionaba cambia.
+- `oidc`: la identidad la pone Microsoft (Entra ID). Cada peticion trae su JWT y se verifica **solo RS256**, con
+  `kid` obligatorio, `exp` obligatorio, y el emisor (`iss`) y la audiencia (`aud`) que digan la configuracion (ver
+  multi-tenant, mas abajo). Las llaves publicas se bajan del JWKS del emisor y se cachean (si llega un `kid`
+  desconocido se recarga, como maximo una vez por minuto, para que un token con un `kid` inventado no sirva de
+  ataque contra el emisor). Lo que no pasa recibe 401, con el motivo en el log y el `X-Request-Id` de la peticion.
+
+Un `AUTH_MODE` mal escrito **tumba el arranque** a proposito: quedarse callado cayendo a `legacy` seria desplegar
+con el login viejo creyendo que ya esta puesto el de Microsoft.
+
+### Un directorio o cualquiera (multi-tenant)
+
+La app se registra en Entra ID como **multi-tenant** (cuentas de cualquier directorio organizacional y cuentas
+personales de Microsoft). Con eso el `iss` del token trae el tenant de **quien inicia sesion**, no uno fijo, asi
+que compararlo con un solo emisor rechazaria a casi todos. El interruptor es `AUTH_MULTI_TENANT`:
+
+- `false` (por defecto): un solo directorio. El emisor es el de `AUTH_ISSUER_URI`, comparado tal cual. **Es el
+  comportamiento de siempre, no cambia nada.**
+- `true`: se acepta cualquier tenant, pero sin aflojar la validacion. Se exigen tres cosas:
+  1. que el `iss` sea exactamente un emisor v2.0 de Entra, con el patron completo y anclado
+     (`https://login.microsoftonline.com/<guid-del-tenant>/v2.0`). Esto es lo que rechaza los parecidos, que es el
+     ataque de este modo: un `http://` en vez de `https://`, un host como `login.microsoftonline.com.evil.com`, un
+     emisor sin `/v2.0`, o `/common` en vez del GUID;
+  2. que el claim `tid` sea **el mismo GUID** que aparece en el `iss`, porque el `tid` es el dato con el que se
+     decide de que organizacion es la persona;
+  3. que ese tenant este en `AUTH_ALLOWED_TENANTS`, si la lista trae algo. Vacia = cualquier tenant que cumpla 1 y
+     2. Un GUID mal escrito en la lista **tumba el arranque**, para que no deje fuera a una organizacion entera sin
+     que nadie se entere.
+
+Las cuentas personales de Microsoft entran por el mismo camino: su emisor es el del tenant de MSA
+(`9188040d-6c67-4c5b-b112-36a304b66dad`), que es un GUID como cualquier otro. Si se pone `AUTH_ALLOWED_TENANTS` y
+se quiere que esas cuentas sigan entrando, hay que incluirlo.
+
+`AUTH_AUDIENCE` acepta una **lista separada por comas** y basta con que el `aud` del token coincida con una: segun
+como quede configurada la app, Entra pone `api://<client-id>` o el `<client-id>` pelado.
+
+Ejemplo de configuracion para Entra multi-tenant (el `AUTH_JWKS_URI` ya es el valor por defecto en este modo, se
+deja escrito para que se vea de donde salen las llaves):
+
+```bash
+AUTH_MODE=oidc
+AUTH_MULTI_TENANT=true
+AUTH_AUDIENCE=api://growlink-usuarios,7f3c1b2a-0000-0000-0000-abcdefabcdef
+AUTH_JWKS_URI=https://login.microsoftonline.com/common/discovery/v2.0/keys
+# opcional: solo estas organizaciones (vacio = cualquiera)
+AUTH_ALLOWED_TENANTS=11111111-2222-3333-4444-555555555555
+AUTH_ADMIN_EMAILS=jefa@growlink.co
+# con multi-tenant NO se usa AUTH_ISSUER_URI
+```
+
+Y para un solo directorio (el modo de antes):
+
+```bash
+AUTH_MODE=oidc
+AUTH_MULTI_TENANT=false
+AUTH_ISSUER_URI=https://login.microsoftonline.com/<tenant>/v2.0
+AUTH_AUDIENCE=api://growlink-usuarios
+AUTH_JWKS_URI=https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys
+```
+
+### El usuario local y su rol
+
+En el primer ingreso se crea el usuario local con el `sub` del token (columna unica `proveedor_sub`), el correo
+(claim `email` o, si no viene, `preferred_username`) y el nombre. Arranca como `USUARIO` con `rolElegido=false`. Se
+usa el `sub` y no el correo porque el correo se puede cambiar, y el de una cuenta borrada se le puede dar a otra
+persona.
+
+- `GET /api/usuarios/me` devuelve `usuarioId` (numerico), `rol`, `rolElegido`, `correo` y `nombre`. Es el endpoint
+  con el que cursos-service y trivia-service traducen `sub` -> `usuarioId` + `rol`.
+- `PUT /api/usuarios/me/rol` con `{"rol":"PUBLICADOR"}` acepta `USUARIO` o `PUBLICADOR` y marca `rolElegido=true`.
+  Se puede cambiar entre esos dos cuando la persona quiera.
+- `ADMIN` no se escoge. Si el correo esta en `AUTH_ADMIN_EMAILS` (lista separada por comas, sin distinguir
+  mayusculas), el usuario queda `ADMIN` con `rolElegido=true`. Pedir `ADMIN` sin estar en la lista responde 403 y
+  deja el intento en el log, y un `ADMIN` no puede bajarse el rol por ese endpoint. La lista se revisa en cada
+  ingreso, asi que agregar un correo surte efecto con que la persona vuelva a entrar; quitarlo **no** le baja el
+  rol (eso se hace a mano, para no quedarse sin administradores por una variable mal copiada).
+
+### Tope de peticiones por IP
+
+Mas de `LIMITE_IP_MAXIMO_POR_MINUTO` peticiones (300 por defecto) desde la misma IP reciben 429 con `Retry-After`.
+La IP real se lee del primer valor de `X-Forwarded-For` (delante hay un balanceador) y si no llega, la del socket.
+Cada replica cuenta por su lado, asi que con N replicas el tope real es de hasta N veces el configurado;
+`LIMITE_IP_MAXIMO_POR_MINUTO=0` lo apaga.
+
+### Eventos de seguridad
+
+Tres contadores de Micrometer, y una linea de log con el `X-Request-Id` por cada evento (nunca el token: un token
+en el log es una credencial en el log):
+
+| Metrica | Que cuenta |
+|---|---|
+| `growlink.seguridad.tokens-invalidos` | 401: el token falta o no paso la verificacion |
+| `growlink.http.limite-ip.rechazos` | 429: peticiones frenadas por el tope por IP (mismo nombre que en cursos-service) |
+| `growlink.seguridad.prohibidos` | 403: pidieron `ADMIN` sin estar en la lista, la llave interna no cuadra, o una regla de autorizacion dijo no |
+
 ## Despliegue
 
 Se despliega en Azure App Service, el flujo de ramas y ambientes esta
@@ -144,6 +245,14 @@ duplican). El script `levantar.sh` del repo `infra` ya lo hace asi.
 | `GROWLINK_INTERNAL_KEY` | Llave para las llamadas entre servicios, la misma en trivia-service |
 | `GROWLINK_CURSOS_SERVICE_URL` | URL de cursos-service |
 | `GROWLINK_CURSOS_CONNECT_TIMEOUT_MS`, `GROWLINK_CURSOS_READ_TIMEOUT_MS` | Opcionales, el plazo maximo para conectar y para esperar la respuesta de cursos-service (por defecto `2000` y `3000` ms) |
+| `AUTH_MODE` | `legacy` (por defecto) o `oidc`. Cualquier otro valor tumba el arranque |
+| `AUTH_MULTI_TENANT` | `false` (por defecto) = un solo directorio, emisor fijo. `true` = cualquier tenant de Entra, validando el patron del `iss` y que el `tid` cuadre |
+| `AUTH_ALLOWED_TENANTS` | Solo con multi-tenant: GUID de tenants permitidos, separados por comas. Vacio = cualquiera. Un GUID mal escrito tumba el arranque |
+| `AUTH_ISSUER_URI` | Solo con `oidc` y `AUTH_MULTI_TENANT=false`: quien firma los tokens, p.ej. `https://login.microsoftonline.com/<tenant>/v2.0`. Con multi-tenant no se usa |
+| `AUTH_AUDIENCE` | Solo con `oidc`: para que aplicacion tienen que venir. **Lista separada por comas**, basta que coincida una, p.ej. `api://growlink-usuarios,<client-id>` |
+| `AUTH_JWKS_URI` | Donde estan las llaves publicas. Vacio con multi-tenant = `https://login.microsoftonline.com/common/discovery/v2.0/keys`; vacio con un solo tenant = `<emisor>/.well-known/jwks.json`, y ahi **con Entra ID hay que ponerla**: `https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys` |
+| `AUTH_ADMIN_EMAILS` | Correos con rol `ADMIN`, separados por comas (sin distinguir mayusculas). Vacio = ningun admin |
+| `LIMITE_IP_MAXIMO_POR_MINUTO`, `LIMITE_IP_VENTANA_SEGUNDOS` | Opcionales, el tope de peticiones por IP (por defecto `300` por `60` s). `0` lo apaga |
 
 ### Salud, trazabilidad y plazos
 
