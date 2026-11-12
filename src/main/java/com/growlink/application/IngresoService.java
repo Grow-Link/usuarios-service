@@ -35,6 +35,7 @@ public class IngresoService {
 
     private final UsuarioRepository usuarioRepository;
     private final UsuarioLocalCreador creador;
+    private final RegistroDeSesiones registroDeSesiones;
 
     // Los correos que quedan como ADMIN, en minusculas para comparar sin distinguir mayusculas.
     // Esta en una variable de entorno y no en la base a proposito: quien es administrador es una
@@ -43,9 +44,11 @@ public class IngresoService {
     private final Set<String> correosDeAdministradores;
 
     public IngresoService(UsuarioRepository usuarioRepository, UsuarioLocalCreador creador,
+                          RegistroDeSesiones registroDeSesiones,
                           @Value("${auth.admin-emails:}") String adminEmails) {
         this.usuarioRepository = usuarioRepository;
         this.creador = creador;
+        this.registroDeSesiones = registroDeSesiones;
         this.correosDeAdministradores = Arrays.stream(adminEmails.split(","))
                 .map(correo -> correo.trim().toLowerCase(Locale.ROOT))
                 .filter(correo -> !correo.isEmpty())
@@ -58,13 +61,16 @@ public class IngresoService {
     /**
      * El usuario local de quien trae este token: el que ya existia, o uno nuevo si es su primer
      * ingreso. Lo llama OidcAuthenticationFilter en cada peticion, asi que el camino normal (la
-     * persona ya existe y nada cambio) no escribe en la base.
+     * persona ya existe, nada cambio y tuvo actividad hace poco) no escribe en la base.
      */
     @Transactional
     public Usuario ingresar(OidcTokenVerificador.Identidad identidad) {
-        return usuarioRepository.findByProveedorSub(identidad.sub())
-                .map(usuario -> actualizarSiHaceFalta(usuario, identidad))
+        Usuario usuario = usuarioRepository.findByProveedorSub(identidad.sub())
+                .map(existente -> actualizarSiHaceFalta(existente, identidad))
                 .orElseGet(() -> crearODevolverElQueSeAdelanto(identidad));
+        // si es la primera peticion tras un rato sin actividad, aqui empieza (y se cuenta) una sesion
+        registroDeSesiones.actividad(usuario);
+        return usuario;
     }
 
     // Si dos peticiones de la misma persona llegan juntas en su primer ingreso, las dos intentan

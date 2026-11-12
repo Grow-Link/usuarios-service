@@ -235,6 +235,46 @@ class IngresoConMicrosoftTest {
                 .isEqualTo(200);
     }
 
+    // ---- sesiones iniciadas (ver RegistroDeSesiones; el paso del tiempo se prueba en RegistroDeSesionesTest) ----
+
+    @Test
+    void elPrimerIngresoEmpiezaUnaSesionYLoQueSigueEsLaMismaSesion() throws Exception {
+        String sub = unSub();
+        double sesiones0 = sesiones("oidc");
+
+        me(LlavesDePrueba.tokenValido(sub, "fer@growlink.co", "Fernanda Gil"));
+        assertThat(sesiones("oidc") - sesiones0).as("el primer ingreso es una sesion").isEqualTo(1);
+
+        // lo que pasa despues: el frontend recarga y cursos-service o trivia-service preguntan por la identidad,
+        // incluso con un token renovado. Es la misma persona usando la app: la misma sesion
+        me(LlavesDePrueba.tokenValido(sub, "fer@growlink.co", "Fernanda Gil"));
+        me(LlavesDePrueba.tokenValido(sub, "fer@growlink.co", "Fernanda Gil"));
+        elegirRol(LlavesDePrueba.tokenValido(sub, "fer@growlink.co", "Fernanda Gil"), "PUBLICADOR", 200);
+        assertThat(sesiones("oidc") - sesiones0).isEqualTo(1);
+    }
+
+    @Test
+    void unTokenQueNoPasaNoEmpiezaNingunaSesion() throws Exception {
+        double sesiones0 = sesiones("oidc");
+
+        mockMvc.perform(get("/api/usuarios/me").header("Authorization", "Bearer "
+                + LlavesDePrueba.tokenFirmadoPorUnImpostor(unSub())));
+
+        assertThat(sesiones("oidc")).isEqualTo(sesiones0);
+    }
+
+    @Test
+    void enModoOidcElLoginViejoNoCuentaComoSesion() throws Exception {
+        double legacy0 = sesiones("legacy");
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/auth/login").contentType("application/json")
+                .content(objectMapper.writeValueAsString(Map.of("usuarioId", 1))));
+
+        // ese token no abre nada en este modo (ver enModoOidcElTokenDelLoginViejoNoSirve)
+        assertThat(sesiones("legacy")).isEqualTo(legacy0);
+    }
+
     // ---- utilidades ----
 
     private static String unSub() {
@@ -267,6 +307,11 @@ class IngresoConMicrosoftTest {
 
     private double contador(String nombre) {
         var contador = registro.find(nombre).counter();
+        return contador == null ? 0 : contador.count();
+    }
+
+    private double sesiones(String modo) {
+        var contador = registro.find("growlink.sesiones.iniciadas").tag("modo", modo).counter();
         return contador == null ? 0 : contador.count();
     }
 }

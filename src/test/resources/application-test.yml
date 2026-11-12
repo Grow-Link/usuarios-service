@@ -23,3 +23,6 @@ growlink:
 seguridad:
   limite-ip:
     maximo-por-minuto: 0
+
+observabilidad:
+  metricas-token: token-de-metricas-solo-para-pruebas

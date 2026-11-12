@@ -25,6 +25,9 @@ docker compose up -d   # levanta Postgres en localhost:5433
 mvn spring-boot:run    # arranca en localhost:8080
 ```
 
+Los logs salen en JSON, una linea por evento (ver [Logs en JSON](#logs-en-json)). Para leerlos a ojo en desarrollo:
+`SPRING_PROFILES_ACTIVE=logs-texto mvn spring-boot:run`.
+
 Al arrancar se siembran 13 usuarios de prueba (6 USUARIO, 6 PUBLICADOR, 1 ADMIN),
 cada uno con nombre y cargo, para poder entrar sin necesidad de registrarse.
 
@@ -211,10 +214,20 @@ La IP real se lee del primer valor de `X-Forwarded-For` (delante hay un balancea
 Cada replica cuenta por su lado, asi que con N replicas el tope real es de hasta N veces el configurado;
 `LIMITE_IP_MAXIMO_POR_MINUTO=0` lo apaga.
 
+A esa IP se le quita el puerto: Azure App Service la manda como `IP:puerto` (`203.0.113.7:51234`) y el puerto cambia
+con cada conexion, asi que contada con puerto cada conexion era una IP nueva y el tope no frenaba a nadie. Tambien se
+quita de una IPv6 entre corchetes (`[2001:db8::1]:51234`); una IPv6 sin corchetes se deja tal cual, porque sus `:` son
+de la direccion.
+
+Ojo: el primer valor de `X-Forwarded-For` lo puede escribir el cliente (el nginx del frontend agrega al final, no
+reemplaza), asi que quien mande su propia cabecera puede esquivar el tope. Esta anotado como pendiente en el ADR-0011
+del repo `infra`.
+
 ### Eventos de seguridad
 
-Tres contadores de Micrometer, y una linea de log con el `X-Request-Id` por cada evento (nunca el token: un token
-en el log es una credencial en el log):
+Tres contadores de Micrometer (en `/actuator/prometheus` y en el tablero de eventos de seguridad del repo `infra`), y
+una linea de log con el `X-Request-Id` por cada evento (nunca el token: un token en el log es una credencial en el
+log):
 
 | Metrica | Que cuenta |
 |---|---|
@@ -222,11 +235,52 @@ en el log es una credencial en el log):
 | `growlink.http.limite-ip.rechazos` | 429: peticiones frenadas por el tope por IP (mismo nombre que en cursos-service) |
 | `growlink.seguridad.prohibidos` | 403: pidieron `ADMIN` sin estar en la lista, la llave interna no cuadra, o una regla de autorizacion dijo no |
 
+Las decisiones de esta seccion estan en los ADR [0007](https://github.com/Grow-Link/infra/blob/main/docs/adr/0007-la-identidad-la-pone-microsoft-y-el-rol-growlink.md)
+(identidad con Microsoft y roles) y [0011](https://github.com/Grow-Link/infra/blob/main/docs/adr/0011-tope-por-ip-y-eventos-de-seguridad.md) (tope por IP
+y eventos de seguridad) del repo `infra`.
+
+## Sesiones iniciadas
+
+Para el tablero de negocio, la metrica `growlink.sesiones.iniciadas` cuenta cuantas sesiones empiezan, con la etiqueta
+`modo` (`legacy` u `oidc`), y cada una deja una linea `Sesion iniciada: usuario N (...)` en el log. Ver
+`RegistroDeSesiones`.
+
+- **`legacy`**: cada `POST /api/auth/login` que entrega un token. Un login que falla no cuenta.
+- **`oidc`**: aqui no hay login (la persona inicia sesion en Microsoft), y contar `GET /api/usuarios/me` inflaria el
+  numero: lo llaman cursos-service y trivia-service para resolver la identidad (cursos-service, una vez por minuto
+  mientras la persona lo usa) y el frontend en cada recarga. Se usa la regla de la analitica web: **una sesion empieza con la
+  primera peticion despues de 30 minutos sin ninguna** (`SESIONES_INACTIVIDAD_MINUTOS`). El primer ingreso tambien
+  cuenta.
+
+Para saber cuando fue la ultima actividad se guarda en la base (columna `usuario.ultima_actividad`, que Hibernate agrega
+sola), no en memoria: con varias replicas cada una veria solo un pedazo. Para no escribir en cada peticion, la marca se
+corre como mucho cada 5 minutos (`SESIONES_REFRESCO_MINUTOS`), asi que en la practica una sesion se da por terminada
+tras 25 a 30 minutos sin actividad. Las escrituras son `UPDATE` con condicion: si llegan varias peticiones a la vez (a
+una o a varias replicas), la base deja pasar una sola y la sesion se cuenta una vez (hay una prueba con 8 hilos).
+
+## Logs en JSON
+
+Cada linea de la salida es un objeto JSON (ver `logback-spring.xml`), para que el almacen de logs (Azure Log Analytics)
+los filtre por campo:
+
+| Campo | Que trae |
+|---|---|
+| `@timestamp` | Cuando paso, en UTC |
+| `level`, `logger_name`, `thread_name`, `message` | Lo de siempre |
+| `rid` | El `X-Request-Id` de la peticion. Falta en lo que no viene de una peticion (el arranque, por ejemplo) |
+| `servicio` | `usuarios-service` |
+| `instancia` | La replica: el mismo valor que la cabecera `X-Instancia` |
+| `stack_trace` | Si hubo excepcion, dentro de la misma linea, con la causa raiz primero y recortada a 16 384 caracteres |
+
+Con el perfil `logs-texto` (`SPRING_PROFILES_ACTIVE=logs-texto`) sale el formato de texto de antes, con `[rid=...]`.
+El letrero de Spring esta apagado, porque no es JSON.
+
 ## Despliegue
 
 Se despliega en Azure App Service, el flujo de ramas y ambientes esta
-explicado en el README del repo `infra`. `ci.yml` corre las pruebas en cada
-push a `main`, `avance` o `final`, y `cd.yml` despliega la rama a su ambiente
+explicado en el README del repo `infra`. `ci.yml` corre las pruebas, mide la
+cobertura y (si esta configurado) manda el analisis a SonarCloud en cada push a
+`main`, `avance` o `final` y en cada pull request a `main`; `cd.yml` despliega la rama a su ambiente
 de GitHub (`main` -> `actual`, `avance` -> `avance`, `final` -> `final`).
 Tambien hay un `Dockerfile`.
 
@@ -253,20 +307,51 @@ duplican). El script `levantar.sh` del repo `infra` ya lo hace asi.
 | `AUTH_JWKS_URI` | Donde estan las llaves publicas. Vacio con multi-tenant = `https://login.microsoftonline.com/common/discovery/v2.0/keys`; vacio con un solo tenant = `<emisor>/.well-known/jwks.json`, y ahi **con Entra ID hay que ponerla**: `https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys` |
 | `AUTH_ADMIN_EMAILS` | Correos con rol `ADMIN`, separados por comas (sin distinguir mayusculas). Vacio = ningun admin |
 | `LIMITE_IP_MAXIMO_POR_MINUTO`, `LIMITE_IP_VENTANA_SEGUNDOS` | Opcionales, el tope de peticiones por IP (por defecto `300` por `60` s). `0` lo apaga |
+| `SESIONES_INACTIVIDAD_MINUTOS`, `SESIONES_REFRESCO_MINUTOS` | Opcionales, cuando empieza una sesion en modo `oidc` (por defecto `30` y `5`). El refresco tiene que ser mayor que 0 y menor que la inactividad, si no el servicio no arranca |
+| `SPRING_PROFILES_ACTIVE` | Opcional. En Azure no se pone (los logs salen en JSON); `logs-texto` es solo para leerlos a ojo en desarrollo |
+| `METRICAS_TOKEN` | El token con el que Prometheus lee `/actuator/prometheus` (el mismo en los tres servicios, minimo 16 caracteres). Sin el, las metricas quedan cerradas |
 
 ### Salud, trazabilidad y plazos
 
 - **Salud**: `GET /actuator/health` (y `/actuator/health/liveness` y `/readiness`) responde sin credenciales y sin
-  detalles. `readiness` incluye la base de datos. No se exponen otros endpoints de actuator.
+  detalles. `readiness` incluye la base de datos (una replica sin base responde 503 y el balanceador deja de mandarle
+  trafico); `liveness` no, a proposito, porque reiniciarla no arregla la base. Spring Boot no mete la base en readiness
+  por su cuenta: lo pide `management.endpoint.health.group.readiness` y lo prueba `ReadinessConLaBaseDeDatosTest`. Aparte
+  de la salud, solo se expone `/actuator/prometheus`, con token (ver
+  abajo).
 - **Trazabilidad**: cada peticion lleva `X-Request-Id` (se respeta uno valido, si no se crea), vuelve en la respuesta y
-  sale en cada linea del log como `[rid=...]`. La llamada a cursos-service lo reenvia, asi una peticion se sigue por
+  sale en cada linea del log, en el campo `rid` (o como `[rid=...]` con el perfil `logs-texto`). La llamada a cursos-service lo reenvia, asi una peticion se sigue por
   los dos servicios.
 - **Plazos**: si cursos-service se cuelga, el Home y el jardin siguen sin su respuesta a los pocos segundos (el Home
   muestra "sin roadmap", el jardin una lista vacia) en vez de quedarse esperando.
+- **Metricas para Prometheus**: `GET /actuator/prometheus` publica las sesiones iniciadas, los eventos de seguridad,
+  las de la JVM y las peticiones HTTP (con cubetas de latencia fijas de 10 ms a 10 s), todas con la etiqueta
+  `instancia` (`WEBSITE_INSTANCE_ID` en Azure, si no el nombre del host), para los tableros de Grafana del repo
+  `infra` (ADR-0009). Solo contesta con la cabecera `X-Metricas-Token: <METRICAS_TOKEN>`: ni un ADMIN entra con su
+  token, y sin ella responde 401 y queda contado como evento de seguridad. Va en una cabecera propia y no en
+  `Authorization` porque en modo `oidc` ahi va el token de Microsoft. Sin `METRICAS_TOKEN` queda cerrado para todos.
+  Ver `TokenDeMetricas`.
 
 ## Pruebas
 
 ```bash
-mvn test
+mvn test     # solo las pruebas
+mvn verify   # las pruebas y la cobertura: target/site/jacoco/index.html
 ```
+
+### Cobertura y SonarCloud en el CI
+
+`ci.yml` corre `mvn -B verify`, que con JaCoCo deja la cobertura en `target/site/jacoco/` (se puede bajar como
+artefacto `cobertura-usuarios-service` desde el resumen de la corrida). Despues manda el analisis a SonarCloud, que
+lee ese mismo reporte (`jacoco.xml`) sin volver a correr las pruebas. El build no se cae por un porcentaje de
+cobertura: eso lo decide la puerta de calidad de SonarCloud.
+
+Mientras el repo no tenga el secreto `SONAR_TOKEN`, el paso de SonarCloud se **omite** con un aviso y el workflow queda
+en verde. Para prenderlo:
+
+1. En SonarCloud, importar el repo desde la organizacion de GitHub y, en *Administration > Analysis Method*, apagar
+   *Automatic Analysis* (si queda prendido, el analisis desde el CI falla).
+2. Crear un token en SonarCloud (*My Account > Security*) y guardarlo en GitHub como secreto del repo `SONAR_TOKEN`.
+3. El CI usa la organizacion `grow-link` y la clave `Grow-Link_usuarios-service`, que son las que pone SonarCloud al
+   importar. Si quedaron distintas, poner las variables del repo `SONAR_ORGANIZATION` y `SONAR_PROJECT_KEY`.
 
