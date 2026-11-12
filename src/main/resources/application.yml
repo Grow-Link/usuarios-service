@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: growlink-app
+  main:
+    # los logs salen en JSON (ver logback-spring.xml) y el letrero de Spring no lo es: romperia la regla de que cada
+    # linea de la salida es un evento que el almacen de logs puede leer
+    banner-mode: "off"
   datasource:
     url: jdbc:postgresql://localhost:5433/growlink
     username: growlink
@@ -95,22 +99,55 @@ seguridad:
     maximo-por-minuto: ${LIMITE_IP_MAXIMO_POR_MINUTO:300}
     ventana-segundos: ${LIMITE_IP_VENTANA_SEGUNDOS:60}
 
-# ATRIBUTO: disponibilidad. Solo se expone la salud (sin detalles: no filtra nombres de bases ni versiones) y sus
-# dos sondas: liveness (el proceso vive) y readiness (puede atender: incluye la base de datos).
+# ATRIBUTO: observabilidad (negocio). Cuando empieza una sesion, para la metrica growlink.sesiones.iniciadas (ver
+# RegistroDeSesiones). En modo legacy, cada login. En modo oidc, la primera peticion de la persona despues de
+# `inactividad-minutos` sin ninguna (y su primer ingreso). La ultima actividad se guarda en la base como mucho cada
+# `refresco-minutos`, para no escribir en cada peticion; por eso una sesion se da por terminada tras
+# inactividad - refresco a inactividad minutos sin actividad (25 a 30 con los valores por defecto).
+# refresco tiene que ser mayor que 0 y menor que inactividad, si no el servicio no arranca.
+sesiones:
+  inactividad-minutos: ${SESIONES_INACTIVIDAD_MINUTOS:30}
+  refresco-minutos: ${SESIONES_REFRESCO_MINUTOS:5}
+
+# ATRIBUTO: disponibilidad. Se expone la salud (sin detalles: no filtra nombres de bases ni versiones) y sus dos
+# sondas: liveness (el proceso vive) y readiness (puede atender: incluye la base de datos).
+# ATRIBUTO: observabilidad. Y las metricas para Prometheus (/actuator/prometheus), que solo contestan con el token
+# del scrape (ver TokenDeMetricas y SecurityConfig). Los tableros de Grafana estan en el repo infra.
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
   endpoint:
     health:
       probes:
         enabled: true
       show-details: never
+      group:
+        # Spring Boot NO mete la base en readiness por su cuenta: sin esto, una replica sin base seguia diciendo que
+        # estaba lista y el balanceador le seguia mandando trafico. Liveness, en cambio, no la mira a proposito:
+        # reiniciar la replica no arregla la base (ver ReadinessConLaBaseDeDatosTest)
+        readiness:
+          include: readinessState,db
+  metrics:
+    distribution:
+      # cubetas de latencia de las peticiones HTTP, para sacar el p95 por replica en el tablero. Son pocas y fijas
+      # (no el histograma completo de Micrometer) para no multiplicar las series por cada ruta y cada replica
+      slo:
+        http.server.requests: 10ms,25ms,50ms,100ms,250ms,500ms,1s,2500ms,5s,10s
 
+observabilidad:
+  # nombre de esta replica para la etiqueta comun "instancia" de las metricas (ver MetricsConfig). En Azure App
+  # Service WEBSITE_INSTANCE_ID ya viene puesta; si esta vacia se usa el nombre del host
+  instancia: ${WEBSITE_INSTANCE_ID:}
+  # el token que tiene que traer Prometheus en la cabecera X-Metricas-Token. Vacio = /actuator/prometheus cerrado
+  metricas-token: ${METRICAS_TOKEN:}
+
+# ATRIBUTO: observabilidad. Los logs salen en JSON, con el id de la peticion (X-Request-Id) en el campo rid de cada
+# linea (ver logback-spring.xml). El patron de abajo es el del perfil logs-texto, para leerlos a ojo en desarrollo:
+# ahi el id sale como [rid=...].
 logging:
   level:
     com.growlink: INFO
   pattern:
-    # ATRIBUTO: observabilidad. El id de la peticion (X-Request-Id) sale en cada linea del log
     level: "%5p [rid=%X{rid:-}]"

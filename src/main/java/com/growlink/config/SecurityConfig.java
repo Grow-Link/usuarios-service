@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -26,7 +27,8 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http, TokenAuthenticationFilter tokenFilter,
                                            Optional<OidcAuthenticationFilter> oidcFilter,
-                                           MetricasDeSeguridad metricas) throws Exception {
+                                           MetricasDeSeguridad metricas,
+                                           TokenDeMetricas tokenDeMetricas) throws Exception {
         Filter puerta = oidcFilter.map(filtro -> (Filter) filtro).orElse(tokenFilter);
         http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -39,6 +41,10 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         // el balanceador y Azure preguntan por la salud sin credenciales (solo health, sin detalles)
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        // las metricas para Prometheus: solo con el token del scrape, no con el de una persona
+                        // (ni siquiera un ADMIN). Sin el, 401 y queda contado (ver TokenDeMetricas)
+                        .requestMatchers("/actuator/prometheus").access((autenticacion, contexto) ->
+                                new AuthorizationDecision(tokenDeMetricas.valido(contexto.getRequest())))
                         .anyRequest().authenticated())
                 // sin esto, pedir algo sin token da 403 en vez de 401
                 // ya nos paso una vez asi que lo dejamos explicito

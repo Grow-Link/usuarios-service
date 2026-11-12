@@ -12,10 +12,13 @@ public class AuthService {
 
     private final UsuarioRepository usuarioRepository;
     private final TokenService tokenService;
+    private final RegistroDeSesiones registroDeSesiones;
 
-    public AuthService(UsuarioRepository usuarioRepository, TokenService tokenService) {
+    public AuthService(UsuarioRepository usuarioRepository, TokenService tokenService,
+                       RegistroDeSesiones registroDeSesiones) {
         this.usuarioRepository = usuarioRepository;
         this.tokenService = tokenService;
+        this.registroDeSesiones = registroDeSesiones;
     }
 
     public List<Usuario> listarUsuariosDisponibles() {
@@ -29,6 +32,8 @@ public class AuthService {
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(() -> new UsuarioNoEncontradoException(usuarioId));
         String token = tokenService.emitir(usuario.getId(), usuario.getRol());
+        // con el token entregado empieza la sesion (solo cuenta en modo legacy, ver RegistroDeSesiones)
+        registroDeSesiones.loginLegacy(usuario.getId());
         return new ResultadoLogin(token, usuario);
     }
 }

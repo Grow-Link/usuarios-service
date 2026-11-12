@@ -2,6 +2,8 @@ package com.growlink.domain;
 
 import jakarta.persistence.*;
 
+import java.time.Instant;
+
 @Entity
 @Table(name = "usuario")
 public class Usuario {
@@ -41,6 +43,17 @@ public class Usuario {
     // tiene que significar para esas filas viejas: todavia no escogio.
     @Column(name = "rol_elegido")
     private Boolean rolElegido;
+
+    // Cuando se le vio actividad por ultima vez (con un margen: se refresca como mucho cada pocos minutos), para
+    // saber cuando empieza una sesion nueva en el modo oidc (ver RegistroDeSesiones). Nulo = nunca se le vio
+    // actividad con Microsoft.
+    //
+    // insertable/updatable = false A PROPOSITO: esta columna solo la escriben los UPDATE condicionales de
+    // UsuarioRepository, nunca un save() de la entidad. Hibernate escribe todas las columnas al guardar, asi que si
+    // la entidad pudiera escribirla, cualquier save() (elegir rol, refrescar el correo) le pondria encima el valor
+    // viejo que leyo al principio de su peticion, y la siguiente peticion veria una inactividad que no hubo.
+    @Column(name = "ultima_actividad", insertable = false, updatable = false)
+    private Instant ultimaActividad;
 
     protected Usuario() {
         // JPA
@@ -90,6 +103,10 @@ public class Usuario {
 
     public boolean isRolElegido() {
         return Boolean.TRUE.equals(rolElegido);
+    }
+
+    public Instant getUltimaActividad() {
+        return ultimaActividad;
     }
 
     /** El rol que la persona escogio (USUARIO o PUBLICADOR): queda marcado como elegido. */
