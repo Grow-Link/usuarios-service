@@ -26,6 +26,13 @@ growlink:
     expiration-minutes: ${GROWLINK_JWT_EXPIRATION_MINUTES:1440}
   # llave para las llamadas de servicio a servicio (trivia -> usuarios), debe ser la misma en trivia-service
   internal-key: ${GROWLINK_INTERNAL_KEY:CHANGE_ME_local_dev_only_internal_key}
+  # confidencialidad (S3, ver CifradoFilter): el cuerpo de las peticiones y respuestas va cifrado ademas de HTTPS.
+  #   clave-privada: llave RSA de 2048 bits en PKCS#8 (base64). Debe ser la misma en todas las instancias
+  #                  (y en los tres servicios, para que el front use una sola). Sin ella se crea una temporal.
+  #   obligatorio:   true = lo que llegue sin cifrar se rechaza con 400 (salvo salud, metricas, WS y llamadas internas)
+  cifrado:
+    clave-privada: ${GROWLINK_CIFRADO_CLAVE_PRIVADA:}
+    obligatorio: ${GROWLINK_CIFRADO_OBLIGATORIO:false}
   ai:
     model: ${GROWLINK_AI_MODEL:claude-opus-5}
   cursos-service:

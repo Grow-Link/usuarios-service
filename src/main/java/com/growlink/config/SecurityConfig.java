@@ -36,6 +36,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
+                        // la llave publica para cifrar (ver CifradoFilter), se pide antes de tener sesion
+                        .requestMatchers("/api/seguridad/**").permitAll()
                         // se autentica con la llave interna dentro del controlador
                         .requestMatchers("/api/interno/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
