@@ -22,8 +22,11 @@ Quedaron 3 servicios:
 
 ```bash
 docker compose up -d   # levanta Postgres en localhost:5433
-mvn spring-boot:run    # arranca en localhost:8080
+SPRING_DATASOURCE_PASSWORD=growlink mvn spring-boot:run   # arranca en localhost:8080
 ```
+
+La contrasena de la base ya no esta escrita en el codigo (SonarCloud la marcaba como secreto expuesto): se pasa con la variable
+`SPRING_DATASOURCE_PASSWORD`. La del Postgres de este `docker-compose.yml` es `growlink`.
 
 Los logs salen en JSON, una linea por evento (ver [Logs en JSON](#logs-en-json)). Para leerlos a ojo en desarrollo:
 `SPRING_PROFILES_ACTIVE=logs-texto mvn spring-boot:run`.
