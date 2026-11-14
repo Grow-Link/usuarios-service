@@ -31,7 +31,11 @@ public class SecurityConfig {
                                            TokenDeMetricas tokenDeMetricas) throws Exception {
         Filter puerta = oidcFilter.map(filtro -> (Filter) filtro).orElse(tokenFilter);
         http
-                .csrf(AbstractHttpConfigurer::disable)
+                // CSRF solo ataca a las APIs que autentican con cookies: un sitio malicioso hace que el navegador mande, solo, la
+                // cookie de la persona. Esta API autentica con un token en la cabecera Authorization (que el navegador no manda
+                // solo) y no guarda sesion (STATELESS, justo abajo), asi que no hay cookie que robar. Mientras nadie agregue
+                // autenticacion por cookie, desactivarlo es correcto. Revisado y aceptado por el equipo, ver docs/sonarcloud-hallazgos.md.
+                .csrf(AbstractHttpConfigurer::disable) // NOSONAR java:S4502 aceptado: API con token en cabecera, sin cookies
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
